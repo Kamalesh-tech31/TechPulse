@@ -1,0 +1,550 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+@import "tailwindcss";
+
+/* ═══════════════════════════════════════════════════════════
+   TRADO — "Slate & Signal" Design Tokens
+   All tokens in @theme are auto-exposed as Tailwind utilities
+   AND as CSS variables: var(--color-trado-accent) etc.
+
+   COLOR HIERARCHY RULE:
+     Primary accent (#4F6BFF)   → ONE primary CTA + active nav item per screen ONLY
+     Secondary (#8B93A7)        → feature icons, badges, secondary buttons, non-critical highlights
+     Success (#3ECF8E)          → gains, positive values
+     Danger (#F0576B)           → losses, negative values, destructive actions
+   ═══════════════════════════════════════════════════════════ */
+@theme {
+  --font-sans:    "Inter",          ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Space Grotesk",  sans-serif;
+  --font-mono:    "JetBrains Mono", ui-monospace,  SFMono-Regular, monospace;
+
+  /* ── Background ── */
+  --color-trado-bg:      #0D1117;  /* Page background — near-black slate */
+  --color-trado-surface: #151B26;  /* Card / panel surface               */
+  --color-trado-border:  rgba(255,255,255,0.06); /* Hairline borders      */
+
+  /* ── Primary accent — RESERVED for primary CTA + active nav item ONLY ── */
+  --color-trado-accent:      #4F6BFF;
+  --color-trado-accent-dark: #3B54E8;
+  --color-trado-accent-glow: rgba(79,107,255,0.35);
+
+  /* ── Secondary / neutral accent — icons, badges, secondary buttons ── */
+  --color-trado-secondary: #8B93A7;
+
+  /* ── Semantic states ── */
+  --color-trado-success: #3ECF8E;  /* gains / positive */
+  --color-trado-danger:  #F0576B;  /* losses / negative / destructive ONLY */
+
+  /* ── Typography ── */
+  --color-trado-text:  #E8EAED;   /* Primary text   */
+  --color-trado-muted: #8B93A7;   /* Secondary text  */
+
+  /* ── Legacy alias — resolves to danger so existing
+     loss/sell/risk classes still render correctly ── */
+  --color-brand-red: #F0576B;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   SIDEBAR — Shared styles for nav items
+   ═══════════════════════════════════════════════════════════ */
+
+/* Icon wrapper — base */
+.sidebar-icon-wrap {
+  display:         inline-flex;
+  align-items:     center;
+  justify-content: center;
+  flex-shrink:     0;
+  transition:      transform 250ms ease-out, color 250ms ease-out;
+}
+
+/* ── Hover state (inactive items only) ── */
+/* Slight background fade on the row */
+.sidebar-nav-btn:not([data-active='true']):hover {
+  background: rgba(255, 255, 255, 0.04) !important;
+}
+
+/* Icon scales 1.05 on hover of inactive items only */
+.sidebar-nav-btn:not([data-active='true']):hover .sidebar-icon-wrap {
+  transform: scale(1.05);
+  color: rgba(255, 255, 255, 0.75) !important;
+}
+
+/* Text brightens on hover of inactive items */
+.sidebar-nav-btn:not([data-active='true']):hover .sidebar-nav-label {
+  color: rgba(255, 255, 255, 0.75) !important;
+}
+
+/* ── Active state ── */
+.sidebar-nav-btn[data-active='true'] {
+  background:  rgba(79, 107, 255, 0.12) !important;
+  box-shadow:  0 0 24px rgba(79, 107, 255, 0.10),
+               inset 0 1px 0 rgba(255, 255, 255, 0.06),
+               inset 0 0 0 1px rgba(79, 107, 255, 0.14) !important;
+}
+
+.sidebar-nav-btn[data-active='true'] .sidebar-icon-wrap {
+  color: var(--color-trado-accent) !important;
+  transform: scale(1);
+}
+
+.sidebar-nav-btn[data-active='true'] .sidebar-nav-label {
+  color: #FFFFFF !important;
+  font-weight: 600 !important;
+}
+
+/* Focus ring — keyboard navigation */
+.sidebar-nav-btn:focus-visible {
+  outline:        2px solid var(--color-trado-accent);
+  outline-offset: -2px;
+  border-radius:  8px;
+}
+
+/* ── Sidebar label — fade transition when collapsing ── */
+.sidebar-nav-label {
+  transition: opacity 200ms ease-out, color 250ms ease-out, font-weight 150ms ease-out;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ── Sidebar collapse/expand — glass circular button ── */
+.sidebar-toggle-glass {
+  display:        flex;
+  align-items:    center;
+  justify-content: center;
+  width:          30px;
+  height:         30px;
+  border-radius:  50%;
+  border:         1px solid rgba(255, 255, 255, 0.10);
+  background:     rgba(255, 255, 255, 0.055);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  cursor:         pointer;
+  color:          var(--color-trado-secondary);
+  box-shadow:     0 2px 8px rgba(0, 0, 0, 0.35),
+                  inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  transition:     background 250ms ease-out,
+                  color 250ms ease-out,
+                  box-shadow 250ms ease-out,
+                  transform 250ms ease-out;
+  flex-shrink: 0;
+}
+
+.sidebar-toggle-glass:hover {
+  background:  rgba(79, 107, 255, 0.15);
+  color:       var(--color-trado-accent);
+  box-shadow:  0 0 18px rgba(79, 107, 255, 0.2),
+               0 2px 8px rgba(0, 0, 0, 0.35),
+               inset 0 1px 0 rgba(255, 255, 255, 0.1);
+}
+
+/* The chevron icon inside the button rotates 180° when collapsed */
+.sidebar-toggle-glass .toggle-chevron {
+  transition: transform 300ms cubic-bezier(0.34, 1.56, 0.64, 1);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.sidebar-toggle-glass.is-collapsed .toggle-chevron {
+  transform: rotate(180deg);
+}
+
+/* ═══════════════════════════════════════════════════════════
+   CARD UTILITIES
+   ═══════════════════════════════════════════════════════════ */
+.card-lift {
+  transition: transform     280ms cubic-bezier(0.16, 1, 0.3, 1),
+              border-color  280ms ease-out,
+              box-shadow    280ms ease-out;
+}
+
+.card-lift:hover {
+  transform:    translateY(-3px);
+  border-color: rgba(79, 107, 255, 0.35) !important;
+  box-shadow:   0 16px 40px rgba(0, 0, 0, 0.4),
+                0 0 0 1px rgba(79, 107, 255, 0.12),
+                0 0 32px rgba(79, 107, 255, 0.06),
+                inset 0 1px 0 0 rgba(255, 255, 255, 0.08);
+}
+
+/* ═══════════════════════════════════════════════════════════
+   GLASSMORPHISM
+   ═══════════════════════════════════════════════════════════ */
+.glassmorphism {
+  background:      rgba(21, 27, 38, 0.5);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border:          1px solid rgba(255, 255, 255, 0.07);
+  box-shadow:      0 8px 32px rgba(0, 0, 0, 0.28),
+                   inset 0 1px 0 0 rgba(255, 255, 255, 0.06);
+  transition:      border-color 280ms ease-out, box-shadow 280ms ease-out;
+}
+
+.glassmorphism:hover {
+  border-color: rgba(255, 255, 255, 0.10);
+  box-shadow:   0 12px 40px rgba(0, 0, 0, 0.35),
+                inset 0 1px 0 0 rgba(255, 255, 255, 0.08);
+}
+
+.glassmorphism-light {
+  background:      rgba(13, 17, 23, 0.35);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border:          1px solid rgba(255, 255, 255, 0.04);
+  box-shadow:      0 4px 16px rgba(0, 0, 0, 0.18),
+                   inset 0 1px 0 0 rgba(255, 255, 255, 0.03);
+}
+
+/* ═══════════════════════════════════════════════════════════
+   GLOW UTILITIES (accent versions — use sparingly)
+   ═══════════════════════════════════════════════════════════ */
+.glow-accent {
+  text-shadow: 0 0 12px rgba(79,107,255,0.4),
+               0 0 24px rgba(79,107,255,0.15);
+}
+
+.glow-border {
+  box-shadow: 0 0 0 1px rgba(79,107,255,0.06),
+              0 4px 16px rgba(0,0,0,0.2);
+}
+
+.glow-border-hover:hover {
+  box-shadow: 0 0 0 1px rgba(79,107,255,0.2),
+              0 8px 32px rgba(0,0,0,0.3),
+              0 0 24px rgba(79,107,255,0.08);
+  border-color: rgba(79,107,255,0.25) !important;
+}
+
+/* Danger glow — for loss/sell states */
+.glow-crimson {
+  text-shadow: 0 0 10px rgba(240,87,107,0.4),
+               0 0 20px rgba(240,87,107,0.15);
+}
+
+/* ═══════════════════════════════════════════════════════════
+   TABLE — Premium row hover
+   ═══════════════════════════════════════════════════════════ */
+.table-premium {
+  border-collapse: separate;
+  border-spacing: 0;
+  width: 100%;
+}
+
+.table-premium thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: rgba(13, 17, 23, 0.95);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  padding: 10px 14px;
+  text-align: left;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--color-trado-muted);
+  white-space: nowrap;
+}
+
+.table-premium tbody tr {
+  transition: background 200ms ease-out, box-shadow 200ms ease-out;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+}
+
+.table-premium tbody tr:hover {
+  background: rgba(79, 107, 255, 0.04);
+  box-shadow: inset 3px 0 0 rgba(79, 107, 255, 0.5);
+}
+
+.table-premium tbody td {
+  padding: 11px 14px;
+  font-size: 13px;
+  color: var(--color-trado-text);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.028);
+}
+
+.table-premium tbody tr:last-child td {
+  border-bottom: none;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   INPUT — Premium focus ring
+   ═══════════════════════════════════════════════════════════ */
+.input-premium {
+  background:   rgba(255, 255, 255, 0.04);
+  border:       1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  color:        var(--color-trado-text);
+  transition:   border-color 200ms ease-out,
+                box-shadow 200ms ease-out,
+                background 200ms ease-out;
+}
+
+.input-premium::placeholder {
+  color: rgba(139, 147, 167, 0.55);
+  font-size: 13px;
+}
+
+.input-premium:focus {
+  outline:      none;
+  border-color: rgba(79, 107, 255, 0.55);
+  background:   rgba(79, 107, 255, 0.04);
+  box-shadow:   0 0 0 3px rgba(79, 107, 255, 0.10),
+                0 0 20px rgba(79, 107, 255, 0.06);
+}
+
+.input-premium:hover:not(:focus) {
+  border-color: rgba(255, 255, 255, 0.14);
+  background:   rgba(255, 255, 255, 0.055);
+}
+
+/* ═══════════════════════════════════════════════════════════
+   CHIP — Category filter chips
+   ═══════════════════════════════════════════════════════════ */
+.chip {
+  display:        inline-flex;
+  align-items:    center;
+  padding:        5px 14px;
+  border-radius:  99px;
+  font-size:      12px;
+  font-weight:    500;
+  letter-spacing: 0.01em;
+  border:         1px solid rgba(255, 255, 255, 0.08);
+  background:     rgba(255, 255, 255, 0.04);
+  color:          var(--color-trado-muted);
+  cursor:         pointer;
+  transition:     background 220ms ease-out,
+                  color 220ms ease-out,
+                  border-color 220ms ease-out,
+                  box-shadow 220ms ease-out,
+                  transform 200ms ease-out;
+  white-space:    nowrap;
+}
+
+.chip:hover:not(.chip-active) {
+  background:   rgba(255, 255, 255, 0.07);
+  color:        var(--color-trado-text);
+  border-color: rgba(255, 255, 255, 0.14);
+  transform:    translateY(-1px);
+  box-shadow:   0 4px 12px rgba(0, 0, 0, 0.25);
+}
+
+.chip-active {
+  background:   linear-gradient(135deg, rgba(79,107,255,0.2) 0%, rgba(59,84,232,0.15) 100%);
+  color:        #c4ceff;
+  border-color: rgba(79, 107, 255, 0.35);
+  font-weight:  600;
+  box-shadow:   0 0 16px rgba(79, 107, 255, 0.12),
+                inset 0 1px 0 rgba(255, 255, 255, 0.1);
+}
+
+/* ═══════════════════════════════════════════════════════════
+   SCROLLBAR — Thin, dark, premium
+   ═══════════════════════════════════════════════════════════ */
+::-webkit-scrollbar        { width: 4px; height: 4px; }
+::-webkit-scrollbar-track  { background: transparent; }
+::-webkit-scrollbar-thumb  {
+  background:    rgba(255, 255, 255, 0.10);
+  border-radius: 99px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background:    rgba(255, 255, 255, 0.22);
+}
+::-webkit-scrollbar-corner { background: transparent; }
+
+/* Firefox */
+* { scrollbar-width: thin; scrollbar-color: rgba(255,255,255,0.10) transparent; }
+
+/* ═══════════════════════════════════════════════════════════
+   KEYFRAMES
+   ═══════════════════════════════════════════════════════════ */
+
+/* Landing page — sphere bob */
+@keyframes bob {
+  0%,  100% { transform: translateY(0px);    }
+  50%        { transform: translateY(-22px); }
+}
+.animate-bob { animation: bob 4s ease-in-out infinite; }
+
+/* Landing page — dashed ring orbit */
+@keyframes orbit-ring {
+  from { transform: rotate(0deg);   }
+  to   { transform: rotate(360deg); }
+}
+.animate-orbit { animation: orbit-ring 12s linear infinite; }
+
+/* Landing page — hero drift dots (short-range float) */
+@keyframes drift {
+  0%,  100% { transform: translate(0, 0);           opacity: 0.25; }
+  25%        { transform: translate(12px, -18px);   opacity: 0.5;  }
+  50%        { transform: translate(-10px, 8px);    opacity: 0.15; }
+  75%        { transform: translate(6px, 14px);     opacity: 0.45; }
+}
+
+/* Ambient background — very slow cross-screen drift (felt, not seen) */
+@keyframes ambientDriftA {
+  0%   { transform: translate(0vw,   0vh);   opacity: 0.06; }
+  33%  { transform: translate(12vw,  -8vh);  opacity: 0.09; }
+  66%  { transform: translate(-6vw,  14vh);  opacity: 0.05; }
+  100% { transform: translate(0vw,   0vh);   opacity: 0.06; }
+}
+@keyframes ambientDriftB {
+  0%   { transform: translate(0vw,  0vh);   opacity: 0.05; }
+  40%  { transform: translate(-9vw, 11vh);  opacity: 0.08; }
+  80%  { transform: translate(7vw,  -6vh);  opacity: 0.04; }
+  100% { transform: translate(0vw,  0vh);   opacity: 0.05; }
+}
+@keyframes ambientDriftC {
+  0%   { transform: translate(0vw,  0vh);  opacity: 0.07; }
+  50%  { transform: translate(15vw, 9vh);  opacity: 0.04; }
+  100% { transform: translate(0vw,  0vh);  opacity: 0.07; }
+}
+
+/* Sidebar — first-load nav item stagger */
+@keyframes navItemIn {
+  from { opacity: 0; transform: translateX(-8px); }
+  to   { opacity: 1; transform: translateX(0);    }
+}
+
+/* Dashboard / inner pages — card fade-up */
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(14px); }
+  to   { opacity: 1; transform: translateY(0);    }
+}
+.animate-fade-up { animation: fadeUp 300ms ease-out both; }
+
+/* CTA button — glow-pulse on click */
+@keyframes glowPulseClick {
+  0%   { box-shadow: 0 0 0  0   rgba(79,107,255,0.8); }
+  60%  { box-shadow: 0 0 0  20px rgba(79,107,255,0);  }
+  100% { box-shadow: 0 0 0  0   rgba(79,107,255,0);   }
+}
+.animate-glow-click { animation: glowPulseClick 500ms ease-out forwards; }
+
+/* Route progress bar — sweep */
+@keyframes progressSweep {
+  0%   { width: 0%;   opacity: 1; }
+  70%  { width: 85%;  opacity: 1; }
+  100% { width: 100%; opacity: 0; }
+}
+
+/* Ambient background pulse (retained for motion graphics blobs) */
+@keyframes pulse-glow {
+  0%, 100% { opacity: 0.15; transform: scale(1);    }
+  50%       { opacity: 0.3;  transform: scale(1.06); }
+}
+.animate-pulse-glow { animation: pulse-glow 4s infinite ease-in-out; }
+
+/* Skeleton shimmer for wallet loading state */
+@keyframes shimmer {
+  0%   { background-position: -200% center; }
+  100% { background-position:  200% center; }
+}
+.skeleton-shimmer {
+  background: linear-gradient(
+    90deg,
+    rgba(255,255,255,0.05) 0%,
+    rgba(79,107,255,0.12)  50%,
+    rgba(255,255,255,0.05) 100%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.5s ease-in-out infinite;
+  border-radius: 4px;
+}
+
+/* Live status indicator — calm soft pulse (no ping, no flash) */
+@keyframes statusPulse {
+  0%, 100% { opacity: 1;   transform: scale(1);   }
+  50%       { opacity: 0.5; transform: scale(1.15); }
+}
+.animate-status-pulse {
+  animation: statusPulse 2.4s ease-in-out infinite;
+}
+
+/* Noise texture shift — extremely subtle grain movement */
+@keyframes noiseShift {
+  0%, 100% { transform: translate(0, 0);    }
+  12%       { transform: translate(-1%, -1%); }
+  25%       { transform: translate(1%, 2%);   }
+  37%       { transform: translate(-2%, -1%); }
+  50%       { transform: translate(1%, 2.5%); }
+  62%       { transform: translate(-1%, 1%);  }
+  75%       { transform: translate(2%, 1.5%); }
+  87%       { transform: translate(-1%, 2.5%); }
+}
+
+/* ═══════════════════════════════════════════════════════════
+   REDUCED MOTION — respect user preference
+   ═══════════════════════════════════════════════════════════ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration:        0.01ms !important;
+    animation-iteration-count: 1      !important;
+    transition-duration:       0.01ms !important;
+    scroll-behavior:           auto   !important;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════
+   CSS CUSTOM PROPERTIES — :root fallbacks
+   These mirror the @theme tokens so inline styles can reference
+   them via var() even in non-Tailwind contexts.
+   ═══════════════════════════════════════════════════════════ */
+:root {
+  --color-trado-bg:           #0D1117;
+  --color-trado-surface:      #151B26;
+  --color-trado-border:       rgba(255,255,255,0.06);
+  --color-trado-accent:       #4F6BFF;
+  --color-trado-accent-dark:  #3B54E8;
+  --color-trado-accent-glow:  rgba(79,107,255,0.35);
+  --color-trado-secondary:    #8B93A7;
+  --color-trado-success:      #3ECF8E;
+  --color-trado-danger:       #F0576B;
+  --color-trado-text:         #E8EAED;
+  --color-trado-muted:        #8B93A7;
+  --color-brand-red:          #F0576B;
+
+  --font-sans:    "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Space Grotesk", sans-serif;
+  --font-mono:    "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   LAYOUT HELPERS
+   ═══════════════════════════════════════════════════════════ */
+
+/* Ensure all page views sit above the fixed ambient background */
+#trado-main > div {
+  position: relative;
+  z-index:  1;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   RESPONSIVE BREAKPOINT HELPERS
+   ═══════════════════════════════════════════════════════════ */
+
+/* Touch targets — all interactive elements ≥44×44 on mobile */
+@media (max-width: 640px) {
+  button, a, [role="button"] {
+    min-height: 44px;
+  }
+
+  /* Prevent any fixed-width element from causing horizontal scroll */
+  .glassmorphism,
+  [class*="rounded-2xl"],
+  [class*="rounded-xl"] {
+    max-width: 100%;
+  }
+}
+
+/* Hero typography scale */
+@media (max-width: 640px) {
+  .hero-headline { font-size: 2rem !important; line-height: 1.2; }
+}
+@media (min-width: 641px) and (max-width: 1024px) {
+  .hero-headline { font-size: 3rem !important; }
+}

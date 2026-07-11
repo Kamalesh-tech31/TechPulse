@@ -1,0 +1,6 @@
+{
+  "name": "StockEasy",
+  "description": "A modern premium fintech web application to help students, beginners, and professionals learn stock trading using virtual money with real-time analytics and AI-powered learning notes, quizzes, and portfolio recommendations.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

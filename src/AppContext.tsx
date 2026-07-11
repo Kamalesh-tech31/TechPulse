@@ -1,6 +1,12 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
-import { Stock, Holding, Transaction, UserProfile, OnboardingPreferences } from './types';
-import { INITIAL_STOCKS } from './mockData';
+import React, { createContext, useContext, useState, useEffect } from "react";
+import {
+  Stock,
+  Holding,
+  Transaction,
+  UserProfile,
+  OnboardingPreferences,
+} from "./types";
+import { INITIAL_STOCKS } from "./mockData";
 
 interface AppContextType {
   user: UserProfile | null;
@@ -14,8 +20,14 @@ interface AppContextType {
   loginUser: (email: string) => boolean;
   loginWithGoogleUser: (name: string, email: string, picture?: string) => void;
   completeOnboarding: (prefs: OnboardingPreferences) => void;
-  buyStock: (stockId: string, quantity: number) => { success: boolean; message: string };
-  sellStock: (stockId: string, quantity: number) => { success: boolean; message: string };
+  buyStock: (
+    stockId: string,
+    quantity: number,
+  ) => { success: boolean; message: string };
+  sellStock: (
+    stockId: string,
+    quantity: number,
+  ) => { success: boolean; message: string };
   logout: () => void;
   resetAllData: () => void;
   addMoney: (amount: number) => void;
@@ -26,37 +38,36 @@ interface AppContextType {
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
-export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [user, setUser] = useState<UserProfile | null>(() => {
-    const saved = localStorage.getItem('stockeasy_user');
-    return saved ? JSON.parse(saved) : null;
-  });
+export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
+  children,
+}) => {
+  const [user, setUser] = useState<UserProfile | null>(null);
 
   const [stocks, setStocks] = useState<Stock[]>(() => {
-    const saved = localStorage.getItem('stockeasy_stocks');
+    const saved = localStorage.getItem("stockeasy_stocks");
     return saved ? JSON.parse(saved) : INITIAL_STOCKS;
   });
 
   const [holdings, setHoldings] = useState<Holding[]>(() => {
-    const saved = localStorage.getItem('stockeasy_holdings');
+    const saved = localStorage.getItem("stockeasy_holdings");
     return saved ? JSON.parse(saved) : [];
   });
 
   const [transactions, setTransactions] = useState<Transaction[]>(() => {
-    const saved = localStorage.getItem('stockeasy_transactions');
+    const saved = localStorage.getItem("stockeasy_transactions");
     return saved ? JSON.parse(saved) : [];
   });
 
   // Derive the correct initial view synchronously — no useEffect flash
   const [activeView, setActiveView] = useState<string>(() => {
-    const saved = localStorage.getItem('stockeasy_user');
-    if (!saved) return 'landing';
+    const saved = localStorage.getItem("stockeasy_user");
+    if (!saved) return "landing";
     try {
       const u = JSON.parse(saved);
-      if (!u.onboardingCompleted) return 'onboarding';
-      return 'dashboard';
+      if (!u.onboardingCompleted) return "onboarding";
+      return "dashboard";
     } catch {
-      return 'landing';
+      return "landing";
     }
   });
 
@@ -66,22 +77,25 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // Sync state to localStorage on changes
   useEffect(() => {
     if (user) {
-      localStorage.setItem('stockeasy_user', JSON.stringify(user));
+      localStorage.setItem("stockeasy_user", JSON.stringify(user));
     } else {
-      localStorage.removeItem('stockeasy_user');
+      localStorage.removeItem("stockeasy_user");
     }
   }, [user]);
 
   useEffect(() => {
-    localStorage.setItem('stockeasy_stocks', JSON.stringify(stocks));
+    localStorage.setItem("stockeasy_stocks", JSON.stringify(stocks));
   }, [stocks]);
 
   useEffect(() => {
-    localStorage.setItem('stockeasy_holdings', JSON.stringify(holdings));
+    localStorage.setItem("stockeasy_holdings", JSON.stringify(holdings));
   }, [holdings]);
 
   useEffect(() => {
-    localStorage.setItem('stockeasy_transactions', JSON.stringify(transactions));
+    localStorage.setItem(
+      "stockeasy_transactions",
+      JSON.stringify(transactions),
+    );
   }, [transactions]);
 
   // Simulate Stock Market Ticks (Price fluctuations)
@@ -93,14 +107,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           const pctChange = (Math.random() * 0.8 - 0.4) / 100;
           const priceDiff = stock.price * pctChange;
           const newPrice = Math.round((stock.price + priceDiff) * 100) / 100;
-          
+
           // Re-evaluate high and low
           const newHigh = newPrice > stock.high ? newPrice : stock.high;
           const newLow = newPrice < stock.low ? newPrice : stock.low;
-          
+
           // Calculate net day percentage change from the base historical price
           const basePrice = stock.history[0] || stock.price;
-          const totalChange = Math.round(((newPrice - basePrice) / basePrice) * 10000) / 100;
+          const totalChange =
+            Math.round(((newPrice - basePrice) / basePrice) * 10000) / 100;
 
           // Rolling 7-day history updates slowly
           let updatedHistory = [...stock.history];
@@ -137,11 +152,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         if (!liveStock) return holding;
 
         const currentPrice = liveStock.price;
-        const currentValue = Math.round(holding.quantity * currentPrice * 100) / 100;
-        const profitLoss = Math.round((currentValue - holding.totalCost) * 100) / 100;
-        const profitLossPercentage = holding.totalCost > 0
-          ? Math.round((profitLoss / holding.totalCost) * 10000) / 100
-          : 0;
+        const currentValue =
+          Math.round(holding.quantity * currentPrice * 100) / 100;
+        const profitLoss =
+          Math.round((currentValue - holding.totalCost) * 100) / 100;
+        const profitLossPercentage =
+          holding.totalCost > 0
+            ? Math.round((profitLoss / holding.totalCost) * 10000) / 100
+            : 0;
 
         if (holding.currentPrice !== currentPrice) {
           updated = true;
@@ -172,7 +190,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         onboardingCompleted: false,
       };
       setUser(newUser);
-      setActiveView('onboarding');
+      setActiveView("onboarding");
       setIsLoading(false);
     }, 800);
   };
@@ -180,13 +198,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const loginUser = (email: string): boolean => {
     setIsLoading(true);
     // Simple check: if they exist in localStorage or we auto-restore
-    const saved = localStorage.getItem('stockeasy_user');
+    const saved = localStorage.getItem("stockeasy_user");
     if (saved) {
       const parsed = JSON.parse(saved);
       if (parsed.email.toLowerCase() === email.toLowerCase()) {
         setTimeout(() => {
           setUser(parsed);
-          setActiveView(parsed.onboardingCompleted ? 'dashboard' : 'onboarding');
+          setActiveView(
+            parsed.onboardingCompleted ? "dashboard" : "onboarding",
+          );
           setIsLoading(false);
         }, 800);
         return true;
@@ -195,22 +215,26 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     // Fallback: If no account exists, we create one instantly for seamless experience
     setTimeout(() => {
       const autoUser: UserProfile = {
-        name: email.split('@')[0].toUpperCase(),
+        name: email.split("@")[0].toUpperCase(),
         email,
         walletBalance: 1000000,
         initialBalance: 1000000,
         onboardingCompleted: false,
       };
       setUser(autoUser);
-      setActiveView('onboarding');
+      setActiveView("onboarding");
       setIsLoading(false);
     }, 800);
     return true;
   };
 
-  const loginWithGoogleUser = (name: string, email: string, picture?: string) => {
+  const loginWithGoogleUser = (
+    name: string,
+    email: string,
+    picture?: string,
+  ) => {
     setIsLoading(true);
-    const saved = localStorage.getItem('stockeasy_user');
+    const saved = localStorage.getItem("stockeasy_user");
     let finalUser: UserProfile;
 
     if (saved) {
@@ -219,7 +243,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         finalUser = {
           ...parsed,
           name: name || parsed.name,
-          googlePicture: picture || parsed.googlePicture
+          googlePicture: picture || parsed.googlePicture,
         };
       } else {
         finalUser = {
@@ -228,7 +252,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           walletBalance: 1000000,
           initialBalance: 1000000,
           onboardingCompleted: false,
-          googlePicture: picture
+          googlePicture: picture,
         };
       }
     } else {
@@ -238,17 +262,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         walletBalance: 1000000,
         initialBalance: 1000000,
         onboardingCompleted: false,
-        googlePicture: picture
+        googlePicture: picture,
       };
     }
 
     setUser(finalUser);
-    localStorage.setItem('stockeasy_user', JSON.stringify(finalUser));
-    
+    localStorage.setItem("stockeasy_user", JSON.stringify(finalUser));
+
     if (finalUser.onboardingCompleted) {
-      setActiveView('dashboard');
+      setActiveView("dashboard");
     } else {
-      setActiveView('onboarding');
+      setActiveView("onboarding");
     }
     setIsLoading(false);
   };
@@ -261,28 +285,33 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       onboardingCompleted: true,
     };
     setUser(updated);
-    setActiveView('dashboard');
+    setActiveView("dashboard");
   };
 
   // Trading Simulator Core Functions
-  const buyStock = (stockId: string, quantity: number): { success: boolean; message: string } => {
-    if (!user) return { success: false, message: 'You must be signed in to trade.' };
-    if (quantity <= 0) return { success: false, message: 'Quantity must be greater than zero.' };
+  const buyStock = (
+    stockId: string,
+    quantity: number,
+  ): { success: boolean; message: string } => {
+    if (!user)
+      return { success: false, message: "You must be signed in to trade." };
+    if (quantity <= 0)
+      return { success: false, message: "Quantity must be greater than zero." };
 
     const stock = stocks.find((s) => s.id === stockId);
-    if (!stock) return { success: false, message: 'Stock not found.' };
+    if (!stock) return { success: false, message: "Stock not found." };
 
     const totalCost = Math.round(stock.price * quantity * 100) / 100;
     if (user.walletBalance < totalCost) {
       return {
         success: false,
-        message: `Insufficient virtual funds. Required: ₹${totalCost.toLocaleString()}, Available: ₹${user.walletBalance.toLocaleString()}`
+        message: `Insufficient virtual funds. Required: ₹${totalCost.toLocaleString()}, Available: ₹${user.walletBalance.toLocaleString()}`,
       };
     }
 
     // Deduct wallet balance
     const newBalance = Math.round((user.walletBalance - totalCost) * 100) / 100;
-    setUser((prev) => prev ? { ...prev, walletBalance: newBalance } : null);
+    setUser((prev) => (prev ? { ...prev, walletBalance: newBalance } : null));
 
     // Update holdings
     let existingHoldingIndex = holdings.findIndex((h) => h.stockId === stockId);
@@ -295,7 +324,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const avgPrice = Math.round((newTotalCost / newQty) * 100) / 100;
       const currentValue = Math.round(newQty * stock.price * 100) / 100;
       const profitLoss = Math.round((currentValue - newTotalCost) * 100) / 100;
-      const profitLossPct = Math.round((profitLoss / newTotalCost) * 10000) / 100;
+      const profitLossPct =
+        Math.round((profitLoss / newTotalCost) * 10000) / 100;
 
       updatedHoldings[existingHoldingIndex] = {
         ...existing,
@@ -325,7 +355,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     // Create buy transaction record
     const transaction: Transaction = {
       id: Math.random().toString(36).substr(2, 9),
-      type: 'BUY',
+      type: "BUY",
       stockId,
       symbol: stock.symbol,
       name: stock.name,
@@ -337,30 +367,39 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
     setTransactions((prev) => [transaction, ...prev]);
 
-    return { success: true, message: `Successfully bought ${quantity} shares of ${stock.symbol}!` };
+    return {
+      success: true,
+      message: `Successfully bought ${quantity} shares of ${stock.symbol}!`,
+    };
   };
 
-  const sellStock = (stockId: string, quantity: number): { success: boolean; message: string } => {
-    if (!user) return { success: false, message: 'You must be signed in to trade.' };
-    if (quantity <= 0) return { success: false, message: 'Quantity must be greater than zero.' };
+  const sellStock = (
+    stockId: string,
+    quantity: number,
+  ): { success: boolean; message: string } => {
+    if (!user)
+      return { success: false, message: "You must be signed in to trade." };
+    if (quantity <= 0)
+      return { success: false, message: "Quantity must be greater than zero." };
 
     const stock = stocks.find((s) => s.id === stockId);
-    if (!stock) return { success: false, message: 'Stock not found.' };
+    if (!stock) return { success: false, message: "Stock not found." };
 
     const holdingIndex = holdings.findIndex((h) => h.stockId === stockId);
     if (holdingIndex < 0 || holdings[holdingIndex].quantity < quantity) {
       return {
         success: false,
-        message: `Insufficient stock quantity. You own ${holdingIndex >= 0 ? holdings[holdingIndex].quantity : 0} shares.`
+        message: `Insufficient stock quantity. You own ${holdingIndex >= 0 ? holdings[holdingIndex].quantity : 0} shares.`,
       };
     }
 
     const holding = holdings[holdingIndex];
     const totalRevenue = Math.round(stock.price * quantity * 100) / 100;
-    
+
     // Add to wallet balance
-    const newBalance = Math.round((user.walletBalance + totalRevenue) * 100) / 100;
-    setUser((prev) => prev ? { ...prev, walletBalance: newBalance } : null);
+    const newBalance =
+      Math.round((user.walletBalance + totalRevenue) * 100) / 100;
+    setUser((prev) => (prev ? { ...prev, walletBalance: newBalance } : null));
 
     // Update holdings
     let updatedHoldings = [...holdings];
@@ -372,10 +411,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       // Pro-rate total cost
       const percentageSold = quantity / holding.quantity;
       const totalCostReduction = holding.totalCost * percentageSold;
-      const remainingCost = Math.round((holding.totalCost - totalCostReduction) * 100) / 100;
+      const remainingCost =
+        Math.round((holding.totalCost - totalCostReduction) * 100) / 100;
       const currentValue = Math.round(remainingQty * stock.price * 100) / 100;
       const profitLoss = Math.round((currentValue - remainingCost) * 100) / 100;
-      const profitLossPct = remainingCost > 0 ? Math.round((profitLoss / remainingCost) * 10000) / 100 : 0;
+      const profitLossPct =
+        remainingCost > 0
+          ? Math.round((profitLoss / remainingCost) * 10000) / 100
+          : 0;
 
       updatedHoldings[holdingIndex] = {
         ...holding,
@@ -391,7 +434,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     // Create sell transaction record
     const transaction: Transaction = {
       id: Math.random().toString(36).substr(2, 9),
-      type: 'SELL',
+      type: "SELL",
       stockId,
       symbol: stock.symbol,
       name: stock.name,
@@ -403,14 +446,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
     setTransactions((prev) => [transaction, ...prev]);
 
-    return { success: true, message: `Successfully sold ${quantity} shares of ${stock.symbol}!` };
+    return {
+      success: true,
+      message: `Successfully sold ${quantity} shares of ${stock.symbol}!`,
+    };
   };
 
   const logout = () => {
     setUser(null);
     setHoldings([]);
     setTransactions([]);
-    setActiveView('landing');
+    setActiveView("landing");
   };
 
   const resetAllData = () => {
@@ -424,18 +470,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setHoldings([]);
     setTransactions([]);
     setStocks(INITIAL_STOCKS);
-    localStorage.removeItem('stockeasy_stocks');
-    localStorage.removeItem('stockeasy_holdings');
-    localStorage.removeItem('stockeasy_transactions');
-    setActiveView('dashboard');
+    localStorage.removeItem("stockeasy_stocks");
+    localStorage.removeItem("stockeasy_holdings");
+    localStorage.removeItem("stockeasy_transactions");
+    setActiveView("dashboard");
   };
 
   const addMoney = (amount: number) => {
-    setUser((prev) => prev ? { ...prev, walletBalance: prev.walletBalance + amount } : null);
+    setUser((prev) =>
+      prev ? { ...prev, walletBalance: prev.walletBalance + amount } : null,
+    );
   };
 
   const resetMoney = () => {
-    setUser((prev) => prev ? { ...prev, walletBalance: 1000000 } : null);
+    setUser((prev) => (prev ? { ...prev, walletBalance: 1000000 } : null));
   };
 
   return (
@@ -470,7 +518,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 export const useApp = () => {
   const context = useContext(AppContext);
   if (context === undefined) {
-    throw new Error('useApp must be used within an AppProvider');
+    throw new Error("useApp must be used within an AppProvider");
   }
   return context;
 };

@@ -5,6 +5,8 @@ import { UserService } from '../services/user.service';
 import { OTPService } from '../services/otp.service';
 import { EmailService } from '../services/email.service';
 import { JWTService } from '../services/jwt.service';
+import { GoogleAuthService } from '../services/googleAuth.service';
+import { supabase } from '../config/supabase';
 import {
   registerSchema,
   loginSchema,
@@ -30,9 +32,9 @@ export class AuthController {
 
       const { email, password, name } = val.data;
 
-      // Check if user already exists
+      // Check if user already exists and already has email login enabled
       const existing = await UserService.findUserByEmail(email);
-      if (existing) {
+      if (existing && existing.auth_provider.includes('email')) {
         return res.status(400).json({ success: false, message: 'An account with this email already exists.' });
       }
 
@@ -113,14 +115,49 @@ export class AuthController {
           return res.status(400).json({ success: false, message: 'Registration cache expired. Please sign up again.' });
         }
 
-        // Create user in Database
-        const { user, profile } = await UserService.createUser({
-          email: formattedEmail,
-          passwordHash: cached.passwordHash,
-          authProvider: 'email',
-          emailVerified: true,
-          fullName: cached.name
-        });
+        // Check if user already exists (Google-only user upgrading to support email/password)
+        const existing = await UserService.findUserByEmail(formattedEmail);
+        let user;
+        let profile;
+
+        if (existing) {
+          // Merge auth providers
+          const providers = existing.auth_provider.split(',').map((p: string) => p.trim());
+          if (!providers.includes('email')) {
+            providers.push('email');
+          }
+          const updatedProvider = providers.join(',');
+
+          const { data: updatedUser, error: updateUserError } = await supabase
+            .from('users')
+            .update({
+              password_hash: cached.passwordHash,
+              auth_provider: updatedProvider,
+              email_verified: true,
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', existing.id)
+            .select('*')
+            .single();
+
+          if (updateUserError || !updatedUser) {
+            throw new Error('Failed to update user authentication: ' + (updateUserError?.message || 'Unknown error'));
+          }
+
+          user = updatedUser;
+          profile = await UserService.getProfileByUserId(existing.id);
+        } else {
+          // Create new user in Database
+          const created = await UserService.createUser({
+            email: formattedEmail,
+            passwordHash: cached.passwordHash,
+            authProvider: 'email',
+            emailVerified: true,
+            fullName: cached.name
+          });
+          user = created.user;
+          profile = created.profile;
+        }
 
         // Invalidate cache
         signupCache.delete(formattedEmail);
@@ -134,11 +171,12 @@ export class AuthController {
           data: {
             token,
             user: {
-              name: profile.full_name,
+              name: profile?.full_name || cached.name,
               email: user.email,
               walletBalance: 1000000,
               initialBalance: 1000000,
-              onboardingCompleted: false
+              onboardingCompleted: profile?.profile_completed || false,
+              googlePicture: profile?.avatar_url || ''
             }
           }
         });
@@ -170,8 +208,8 @@ export class AuthController {
         return res.status(401).json({ success: false, message: 'Invalid email or password.' });
       }
 
-      if (user.auth_provider === 'google') {
-        return res.status(400).json({ success: false, message: 'This account is registered via Google Sign-In.' });
+      if (!user.auth_provider.includes('email')) {
+        return res.status(400).json({ success: false, message: 'This account does not support Email/Password login. Please sign in via Google.' });
       }
 
       const isMatch = await comparePassword(password, user.password_hash || '');
@@ -205,52 +243,33 @@ export class AuthController {
 
   static async google(req: Request, res: Response) {
     try {
-      const val = googleAuthSchema.safeParse(req.body);
-      if (!val.success) {
-        return res.status(400).json({ success: false, message: val.error.issues[0].message });
+      const { accessToken } = req.body;
+      if (!accessToken) {
+        return res.status(400).json({ success: false, message: 'Access token is required.' });
       }
 
-      const { email, name, picture } = val.data;
-      const formattedEmail = email.toLowerCase().trim();
-
-      let user = await UserService.findUserByEmail(formattedEmail);
-      let profile;
-
-      if (!user) {
-        // Create new user via Google
-        const created = await UserService.createUser({
-          email: formattedEmail,
-          authProvider: 'google',
-          emailVerified: true,
-          fullName: name,
-          avatarUrl: picture || undefined
-        });
-        user = created.user;
-        profile = created.profile;
-      } else {
-        profile = await UserService.getProfileByUserId(user.id);
-      }
-
-      const token = JWTService.signToken({ userId: user.id, email: user.email });
+      const syncResult = await GoogleAuthService.syncAndGetRedirect(accessToken);
+      const token = JWTService.signToken({ userId: syncResult.user.id, email: syncResult.user.email });
 
       return res.status(200).json({
         success: true,
         message: 'Google sign-in successful.',
+        redirectTo: syncResult.redirectTo,
         data: {
           token,
           user: {
-            name: profile?.full_name || name,
-            email: user.email,
-            walletBalance: 1000000,
-            initialBalance: 1000000,
-            onboardingCompleted: profile?.profile_completed || false,
-            googlePicture: profile?.avatar_url || picture || ''
+            name: syncResult.user.name,
+            email: syncResult.user.email,
+            walletBalance: syncResult.user.walletBalance,
+            initialBalance: syncResult.user.initialBalance,
+            onboardingCompleted: syncResult.user.onboardingCompleted,
+            googlePicture: syncResult.user.googlePicture
           }
         }
       });
     } catch (error: any) {
       console.error('[Google OAuth API Error]:', error);
-      return res.status(500).json({ success: false, message: 'Internal server error' });
+      return res.status(500).json({ success: false, message: error.message || 'Internal server error' });
     }
   }
 

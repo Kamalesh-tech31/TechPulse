@@ -15,8 +15,10 @@ import { TransactionHistoryView } from './components/TransactionHistoryView';
 import { ProfileView } from './components/ProfileView';
 import { AmbientBackground } from './components/AmbientBackground';
 
+import { Cpu } from 'lucide-react';
+
 const AppContent: React.FC = () => {
-  const { user, activeView, setActiveView } = useApp();
+  const { user, activeView, setActiveView, authLoading } = useApp();
 
   // Mirror activeView → URL (one-way only, no feedback loop)
   React.useEffect(() => {
@@ -43,6 +45,34 @@ const AppContent: React.FC = () => {
     window.addEventListener('popstate', handlePop);
     return () => window.removeEventListener('popstate', handlePop);
   }, [user, setActiveView]);
+
+  // 0. Startup/Auth Loading State
+  if (authLoading) {
+    return (
+      <div style={{
+        minHeight: '100vh',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        background: '#0D1117',
+        color: '#fff',
+        fontFamily: 'sans-serif'
+      }}>
+        <div style={{ textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px' }}>
+          <div style={{
+            position: 'relative',
+            width: '64px',
+            height: '64px'
+          }}>
+            <div className="absolute inset-0 rounded-full border-2 border-trado-accent/10 border-t-trado-accent animate-spin" style={{ borderColor: 'rgba(59,130,246,0.1)', borderTopColor: '#3b82f6' }}></div>
+            <div className="absolute inset-2 rounded-full border border-white/5 border-b-trado-accent animate-spin" style={{ animationDuration: '1.5s', borderColor: 'rgba(255,255,255,0.05)', borderBottomColor: '#3b82f6' }}></div>
+            <Cpu className="absolute inset-0 m-auto h-6 w-6 text-trado-accent animate-pulse" style={{ color: '#3b82f6' }} />
+          </div>
+          <div style={{ color: '#9ca3af', fontSize: '14px', fontFamily: 'monospace' }}>Securing session...</div>
+        </div>
+      </div>
+    );
+  }
 
   // 1. Unauthenticated — show landing, login or register based on activeView (source of truth)
   if (!user) {

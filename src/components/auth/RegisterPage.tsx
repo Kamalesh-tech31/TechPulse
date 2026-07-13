@@ -7,6 +7,7 @@ import { TrendingUp, Mail, User, Lock, Shield, Eye, EyeOff, ArrowRight, CheckCir
 import { motion, AnimatePresence, useReducedMotion } from "motion/react";
 import { useApp } from "../../AppContext";
 import { AuthBackground } from "../AuthBackground";
+import { supabase } from "../../supabase";
 import { Field, PrimaryBtn, GoogleBtn, Divider, ErrorBanner, OtpDigit, TEXT, MUTED, ACCENT, SURFACE, cardStyle } from "./AuthShared";
 import { AuthWidgetScene, ALL_WIDGETS, AuthWidget } from "./AuthWidgets";
 
@@ -17,7 +18,7 @@ const ALL_REG_VALS = (): Record<string, string> => {
 };
 
 export const RegisterPage: React.FC = () => {
-  const { registerUser, loginWithGoogleUser, isLoading, setActiveView } = useApp();
+  const { loginUserFromResponse, isLoading, setActiveView } = useApp();
   const reduced = useReducedMotion();
 
   // ─── View state: register or otp ───────────────────────────────────────────
@@ -88,43 +89,17 @@ export const RegisterPage: React.FC = () => {
   const handleGoogle = async () => {
     setError("");
     try {
-      const redirectUri = `${window.location.origin}/auth/callback`;
-      const res = await fetch(`/api/auth/google/url?redirectUri=${encodeURIComponent(redirectUri)}`);
-      if (!res.ok) throw new Error();
-      const { url } = await res.json();
-      const [W, H] = [500, 650];
-      const popup = window.open(url, "google_oauth_popup",
-        `width=${W},height=${H},top=${(screen.height - H) / 2},left=${(screen.width - W) / 2}`);
-      if (!popup) setError("Popup blocked — please allow popups for this site.");
-    } catch { setError("Unable to start Google Sign-Up. Please try again."); }
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: "google",
+        options: {
+          redirectTo: `${window.location.origin}/`,
+        },
+      });
+      if (error) throw error;
+    } catch (err: any) {
+      setError(err.message || "Unable to start Google Sign-In. Please try again.");
+    }
   };
-  useEffect(() => {
-    const handler = async (ev: MessageEvent) => {
-      const o = ev.origin;
-      if (!o.endsWith(".run.app") && !o.includes("localhost") && !o.includes("127.0.0.1")) return;
-      if (ev.data?.type === "OAUTH_AUTH_SUCCESS") {
-        const { name: n, email: em, picture } = ev.data.user;
-        try {
-          const res = await fetch("/auth/google", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ name: n, email: em, picture: picture || "" })
-          });
-          const data = await res.json();
-          if (data.success) {
-            localStorage.setItem("trado_token", data.data.token);
-            loginWithGoogleUser(data.data.user.name, data.data.user.email, data.data.user.googlePicture);
-          } else {
-            loginWithGoogleUser(n, em, picture);
-          }
-        } catch {
-          loginWithGoogleUser(n, em, picture);
-        }
-      }
-    };
-    window.addEventListener("message", handler);
-    return () => window.removeEventListener("message", handler);
-  }, [loginWithGoogleUser]);
 
   // ─── Register submit → OTP ─────────────────────────────────────────────────
   const handleRegister = async (e: React.FormEvent) => {
@@ -186,7 +161,9 @@ export const RegisterPage: React.FC = () => {
       localStorage.setItem("trado_token", data.data.token);
       setVerifying(false);
       setSuccess(true);
-      setTimeout(() => loginWithGoogleUser(data.data.user.name, data.data.user.email, data.data.user.googlePicture), 1500);
+      // Navigate immediately to onboarding (or dashboard if already completed)
+      // using the server-returned user data — no localStorage guessing, no setTimeout delay.
+      setTimeout(() => loginUserFromResponse(data.data.user), 900);
     } catch {
       setVerifying(false);
       setError("Network error. Please try again.");

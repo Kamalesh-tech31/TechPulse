@@ -7,6 +7,17 @@ import {
   OnboardingPreferences,
 } from "./types";
 import { INITIAL_STOCKS } from "./mockData";
+import { supabase } from "./supabase";
+
+// Backend-returned user shape (from /auth/login, /auth/verify-otp, /auth/google)
+export interface BackendUser {
+  name: string;
+  email: string;
+  walletBalance: number;
+  initialBalance: number;
+  onboardingCompleted: boolean;
+  googlePicture?: string;
+}
 
 interface AppContextType {
   user: UserProfile | null;
@@ -14,11 +25,13 @@ interface AppContextType {
   holdings: Holding[];
   transactions: Transaction[];
   isLoading: boolean;
+  authLoading: boolean;
   activeView: string;
   selectedStockId: string | null;
   registerUser: (name: string, email: string) => void;
   loginUser: (email: string) => boolean;
   loginWithGoogleUser: (name: string, email: string, picture?: string) => void;
+  loginUserFromResponse: (userData: BackendUser) => void;
   completeOnboarding: (prefs: OnboardingPreferences) => Promise<void>;
   buyStock: (
     stockId: string,
@@ -73,6 +86,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
 
   const [selectedStockId, setSelectedStockId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [authLoading, setAuthLoading] = useState<boolean>(true);
 
   // Sync state to localStorage on changes
   useEffect(() => {
@@ -97,6 +111,122 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
       JSON.stringify(transactions),
     );
   }, [transactions]);
+
+  // Handle session detection and synchronization on boot
+  useEffect(() => {
+    const initAuth = async () => {
+      setAuthLoading(true);
+      setIsLoading(true);
+      try {
+        // 1. Check if there is an active Supabase session (Google Auth)
+        const { data: { session }, error } = await supabase.auth.getSession();
+        
+        if (error) {
+          console.error("Supabase getSession error:", error);
+        }
+        
+        if (session) {
+          // Sync session with the backend using POST /auth/google
+          const res = await fetch("/auth/google", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ accessToken: session.access_token }),
+          });
+          const result = await res.json();
+          if (result.success && result.data) {
+            localStorage.setItem("trado_token", result.data.token);
+            const finalUser = {
+              name: result.data.user.name,
+              email: result.data.user.email,
+              walletBalance: result.data.user.walletBalance,
+              initialBalance: result.data.user.initialBalance,
+              onboardingCompleted: result.data.user.onboardingCompleted,
+              googlePicture: result.data.user.googlePicture,
+            };
+            setUser(finalUser);
+            
+            // Clean up the URL hash so it looks clean
+            if (window.history.replaceState) {
+              window.history.replaceState(null, "", window.location.pathname + window.location.search);
+            }
+            
+            if (result.redirectTo === "/dashboard") {
+              setActiveView("dashboard");
+            } else {
+              setActiveView("onboarding");
+            }
+            setAuthLoading(false);
+            setIsLoading(false);
+            return;
+          }
+        }
+
+        // 2. If no Supabase session, check if there is an active backend trado_token
+        const localToken = localStorage.getItem("trado_token");
+        if (localToken) {
+          const res = await fetch("/auth/me", {
+            headers: {
+              "Authorization": `Bearer ${localToken}`,
+            },
+          });
+          if (res.ok) {
+            const result = await res.json();
+            if (result.success && result.data?.user) {
+              const finalUser = {
+                name: result.data.user.name,
+                email: result.data.user.email,
+                walletBalance: result.data.user.walletBalance,
+                initialBalance: result.data.user.initialBalance,
+                onboardingCompleted: result.data.user.onboardingCompleted,
+                googlePicture: result.data.user.googlePicture,
+              };
+              setUser(finalUser);
+              if (finalUser.onboardingCompleted) {
+                setActiveView("dashboard");
+              } else {
+                setActiveView("onboarding");
+              }
+              setAuthLoading(false);
+              setIsLoading(false);
+              return;
+            }
+          }
+          // If token verification fails, clear session details
+          localStorage.removeItem("trado_token");
+          setUser(null);
+          setActiveView("landing");
+        } else {
+          // No session and no local token, so they are unauthenticated
+          setUser(null);
+          // If they are on register/login page, keep the view. Otherwise reset to landing.
+          const path = window.location.pathname;
+          if (path === '/register') setActiveView('register');
+          else if (path === '/login') setActiveView('signin');
+          else setActiveView('landing');
+        }
+      } catch (err) {
+        console.error("Initialization of authentication failed:", err);
+      } finally {
+        setAuthLoading(false);
+        setIsLoading(false);
+      }
+    };
+
+    initAuth();
+
+    // Listen for auth state changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (session) {
+        initAuth();
+      }
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, []);
 
   // Simulate Stock Market Ticks (Price fluctuations)
   useEffect(() => {
@@ -275,6 +405,27 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
       setActiveView("onboarding");
     }
     setIsLoading(false);
+  };
+
+  /**
+   * loginUserFromResponse — the canonical way to log in a user from any
+   * backend endpoint (email+OTP, email+password, or Google OAuth).
+   * Unlike loginWithGoogleUser, this function:
+   *  - Uses the backend-returned walletBalance (not hardcoded)
+   *  - Sets the user synchronously (no setTimeout)
+   *  - Does NOT guess onboardingCompleted from localStorage
+   */
+  const loginUserFromResponse = (userData: BackendUser) => {
+    const finalUser: UserProfile = {
+      name: userData.name,
+      email: userData.email,
+      walletBalance: userData.walletBalance,
+      initialBalance: userData.initialBalance,
+      onboardingCompleted: userData.onboardingCompleted,
+      googlePicture: userData.googlePicture,
+    };
+    setUser(finalUser);
+    setActiveView(userData.onboardingCompleted ? "dashboard" : "onboarding");
   };
 
   const completeOnboarding = async (prefs: OnboardingPreferences) => {
@@ -481,13 +632,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
           headers: { "Authorization": `Bearer ${token}` }
         });
       }
-    } catch { /* silent fail */ } finally {
-      localStorage.removeItem("trado_token");
-      setUser(null);
-      setHoldings([]);
-      setTransactions([]);
-      setActiveView("landing");
-    }
+    } catch { /* silent fail */ }
+    try {
+      await supabase.auth.signOut();
+    } catch { /* silent fail */ }
+    localStorage.removeItem("trado_token");
+    setUser(null);
+    setHoldings([]);
+    setTransactions([]);
+    setActiveView("landing");
   };
 
   const resetAllData = () => {
@@ -525,11 +678,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
         holdings,
         transactions,
         isLoading,
+        authLoading,
         activeView,
         selectedStockId,
         registerUser,
         loginUser,
         loginWithGoogleUser,
+        loginUserFromResponse,
         completeOnboarding,
         buyStock,
         sellStock,

@@ -10,6 +10,7 @@ import { motion, useReducedMotion } from "motion/react";
 import { useApp } from "../../AppContext";
 import { AuthBackground } from "../AuthBackground";
 import { Field, PrimaryBtn, GoogleBtn, Divider, ErrorBanner, SURFACE, TEXT, MUTED, ACCENT, cardStyle } from "./AuthShared";
+import { supabase } from "../../supabase";
 import { AuthWidgetScene, ALL_WIDGETS, AuthWidget } from "./AuthWidgets";
 
 // All IDs that could possibly appear in ALL_WIDGETS
@@ -21,7 +22,7 @@ const initLoginVals = (): Record<string, string> => {
 };
 
 export const LoginPage: React.FC = () => {
-  const { loginUser, loginWithGoogleUser, isLoading, setActiveView } = useApp();
+  const { loginUserFromResponse, isLoading, setActiveView } = useApp();
   const reduced = useReducedMotion();
 
   // ─── Form state ─────────────────────────────────────────────────────────────
@@ -81,45 +82,17 @@ export const LoginPage: React.FC = () => {
   const handleGoogle = async () => {
     setError("");
     try {
-      const redirectUri = `${window.location.origin}/auth/callback`;
-      const res = await fetch(`/api/auth/google/url?redirectUri=${encodeURIComponent(redirectUri)}`);
-      if (!res.ok) throw new Error();
-      const { url } = await res.json();
-      const [W, H] = [500, 650];
-      const popup = window.open(url, "google_oauth_popup",
-        `width=${W},height=${H},top=${(screen.height - H) / 2},left=${(screen.width - W) / 2}`);
-      if (!popup) setError("Popup blocked — please allow popups for this site.");
-    } catch { setError("Unable to start Google Sign-In. Please try again."); }
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: "google",
+        options: {
+          redirectTo: `${window.location.origin}/`,
+        },
+      });
+      if (error) throw error;
+    } catch (err: any) {
+      setError(err.message || "Unable to start Google Sign-In. Please try again.");
+    }
   };
-  useEffect(() => {
-    const handler = async (ev: MessageEvent) => {
-      const o = ev.origin;
-      if (!o.endsWith(".run.app") && !o.includes("localhost") && !o.includes("127.0.0.1")) return;
-      if (ev.data?.type === "OAUTH_AUTH_SUCCESS") {
-        const { name, email: em, picture } = ev.data.user;
-        try {
-          const res = await fetch("/auth/google", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ name, email: em, picture: picture || "" })
-          });
-          const data = await res.json();
-          if (data.success) {
-            localStorage.setItem("trado_token", data.data.token);
-            loginWithGoogleUser(data.data.user.name, data.data.user.email, data.data.user.googlePicture);
-          } else {
-            // Fallback: load from OAuth payload directly
-            loginWithGoogleUser(name, em, picture);
-          }
-        } catch {
-          // Fallback if backend unavailable
-          loginWithGoogleUser(name, em, picture);
-        }
-      }
-    };
-    window.addEventListener("message", handler);
-    return () => window.removeEventListener("message", handler);
-  }, [loginWithGoogleUser]);
 
   // ─── Submit ─────────────────────────────────────────────────────────────────
   const handleSubmit = async (e: React.FormEvent) => {
@@ -137,8 +110,8 @@ export const LoginPage: React.FC = () => {
       if (!data.success) { setError(data.message || "Login failed. Please check your credentials."); return; }
       // Store JWT token
       localStorage.setItem("trado_token", data.data.token);
-      // Load user into React state
-      loginWithGoogleUser(data.data.user.name, data.data.user.email, data.data.user.googlePicture);
+      // Load user into React state using server-returned data (walletBalance, onboardingCompleted)
+      loginUserFromResponse(data.data.user);
     } catch {
       setError("Network error. Please check your connection.");
     }

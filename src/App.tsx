@@ -25,8 +25,8 @@ const AppContent: React.FC = () => {
       window.history.pushState(null, '', '/register');
     } else if (activeView === 'signin' && window.location.pathname !== '/login') {
       window.history.pushState(null, '', '/login');
-    } else if (activeView === 'landing' && window.location.pathname !== '/login') {
-      window.history.replaceState(null, '', '/login');
+    } else if (activeView === 'landing' && window.location.pathname !== '/') {
+      window.history.pushState(null, '', '/');
     }
   }, [activeView, user]);
 
@@ -36,6 +36,7 @@ const AppContent: React.FC = () => {
       if (!user) {
         const path = window.location.pathname;
         if (path === '/register') setActiveView('register');
+        else if (path === '/') setActiveView('landing');
         else setActiveView('signin');
       }
     };
@@ -43,8 +44,9 @@ const AppContent: React.FC = () => {
     return () => window.removeEventListener('popstate', handlePop);
   }, [user, setActiveView]);
 
-  // 1. Unauthenticated — show login or register based on activeView (source of truth)
+  // 1. Unauthenticated — show landing, login or register based on activeView (source of truth)
   if (!user) {
+    if (activeView === 'landing') return <LandingPage />;
     if (activeView === 'register') return <RegisterPage />;
     return <LoginPage />;
   }

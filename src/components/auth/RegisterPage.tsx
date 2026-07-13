@@ -99,12 +99,27 @@ export const RegisterPage: React.FC = () => {
     } catch { setError("Unable to start Google Sign-Up. Please try again."); }
   };
   useEffect(() => {
-    const handler = (ev: MessageEvent) => {
+    const handler = async (ev: MessageEvent) => {
       const o = ev.origin;
       if (!o.endsWith(".run.app") && !o.includes("localhost") && !o.includes("127.0.0.1")) return;
       if (ev.data?.type === "OAUTH_AUTH_SUCCESS") {
         const { name: n, email: em, picture } = ev.data.user;
-        loginWithGoogleUser(n, em, picture);
+        try {
+          const res = await fetch("/auth/google", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ name: n, email: em, picture: picture || "" })
+          });
+          const data = await res.json();
+          if (data.success) {
+            localStorage.setItem("trado_token", data.data.token);
+            loginWithGoogleUser(data.data.user.name, data.data.user.email, data.data.user.googlePicture);
+          } else {
+            loginWithGoogleUser(n, em, picture);
+          }
+        } catch {
+          loginWithGoogleUser(n, em, picture);
+        }
       }
     };
     window.addEventListener("message", handler);
@@ -112,7 +127,7 @@ export const RegisterPage: React.FC = () => {
   }, [loginWithGoogleUser]);
 
   // ─── Register submit → OTP ─────────────────────────────────────────────────
-  const handleRegister = (e: React.FormEvent) => {
+  const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
     if (!name.trim())  { setError("Please enter your full name."); return; }
@@ -120,7 +135,18 @@ export const RegisterPage: React.FC = () => {
     if (!password)     { setError("Please set a password."); return; }
     if (password !== confirmPw) { setError("Passwords don't match."); return; }
     if (password.length < 6)   { setError("Password must be at least 6 characters."); return; }
-    setStep("otp");
+    try {
+      const res = await fetch("/auth/register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: name.trim(), email: email.trim(), password })
+      });
+      const data = await res.json();
+      if (!data.success) { setError(data.message || "Registration failed."); return; }
+      setStep("otp");
+    } catch {
+      setError("Network error. Please check your connection.");
+    }
   };
 
   // ─── OTP handlers ──────────────────────────────────────────────────────────
@@ -139,14 +165,32 @@ export const RegisterPage: React.FC = () => {
     if (!/^\d{6}$/.test(d)) return;
     setOtp(d.split("")); otpRefs.current[5]?.focus();
   };
-  const verifyOtp = (e: React.FormEvent) => {
+  const verifyOtp = async (e: React.FormEvent) => {
     e.preventDefault();
+    setError("");
     if (otp.join("").length < 6) { setError("Please enter the full 6-digit code."); return; }
     setVerifying(true);
-    setTimeout(() => {
-      setVerifying(false); setSuccess(true);
-      setTimeout(() => registerUser(name, email), 1500);
-    }, 1200);
+    try {
+      const res = await fetch("/auth/verify-otp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: email.trim(), otp: otp.join(""), purpose: "signup" })
+      });
+      const data = await res.json();
+      if (!data.success) {
+        setVerifying(false);
+        setError(data.message || "Invalid verification code.");
+        return;
+      }
+      // Store JWT token
+      localStorage.setItem("trado_token", data.data.token);
+      setVerifying(false);
+      setSuccess(true);
+      setTimeout(() => loginWithGoogleUser(data.data.user.name, data.data.user.email, data.data.user.googlePicture), 1500);
+    } catch {
+      setVerifying(false);
+      setError("Network error. Please try again.");
+    }
   };
 
   // ─── Card spotlight ─────────────────────────────────────────────────────────

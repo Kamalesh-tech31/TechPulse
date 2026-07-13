@@ -4,6 +4,7 @@ import dotenv from 'dotenv';
 import { createServer as createViteServer } from 'vite';
 import { GoogleGenAI, Type } from '@google/genai';
 import { exec } from 'child_process';
+import backendApp from './backend/app';
 
 dotenv.config();
 
@@ -11,6 +12,7 @@ const app = express();
 const PORT = 3000;
 
 app.use(express.json());
+app.use(backendApp);
 
 // Initialize Gemini client lazily
 let aiClient: GoogleGenAI | null = null;

@@ -92,12 +92,29 @@ export const LoginPage: React.FC = () => {
     } catch { setError("Unable to start Google Sign-In. Please try again."); }
   };
   useEffect(() => {
-    const handler = (ev: MessageEvent) => {
+    const handler = async (ev: MessageEvent) => {
       const o = ev.origin;
       if (!o.endsWith(".run.app") && !o.includes("localhost") && !o.includes("127.0.0.1")) return;
       if (ev.data?.type === "OAUTH_AUTH_SUCCESS") {
         const { name, email: em, picture } = ev.data.user;
-        loginWithGoogleUser(name, em, picture);
+        try {
+          const res = await fetch("/auth/google", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ name, email: em, picture: picture || "" })
+          });
+          const data = await res.json();
+          if (data.success) {
+            localStorage.setItem("trado_token", data.data.token);
+            loginWithGoogleUser(data.data.user.name, data.data.user.email, data.data.user.googlePicture);
+          } else {
+            // Fallback: load from OAuth payload directly
+            loginWithGoogleUser(name, em, picture);
+          }
+        } catch {
+          // Fallback if backend unavailable
+          loginWithGoogleUser(name, em, picture);
+        }
       }
     };
     window.addEventListener("message", handler);
@@ -105,13 +122,26 @@ export const LoginPage: React.FC = () => {
   }, [loginWithGoogleUser]);
 
   // ─── Submit ─────────────────────────────────────────────────────────────────
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
     if (!email) { setError("Please enter your email address."); return; }
     if (!password) { setError("Please enter your password."); return; }
-    const ok = loginUser(email);
-    if (!ok) setError("No account found. Please register first.");
+    try {
+      const res = await fetch("/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: email.trim(), password })
+      });
+      const data = await res.json();
+      if (!data.success) { setError(data.message || "Login failed. Please check your credentials."); return; }
+      // Store JWT token
+      localStorage.setItem("trado_token", data.data.token);
+      // Load user into React state
+      loginWithGoogleUser(data.data.user.name, data.data.user.email, data.data.user.googlePicture);
+    } catch {
+      setError("Network error. Please check your connection.");
+    }
   };
 
   // ─── Card spotlight ─────────────────────────────────────────────────────────

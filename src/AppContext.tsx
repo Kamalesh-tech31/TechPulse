@@ -19,7 +19,7 @@ interface AppContextType {
   registerUser: (name: string, email: string) => void;
   loginUser: (email: string) => boolean;
   loginWithGoogleUser: (name: string, email: string, picture?: string) => void;
-  completeOnboarding: (prefs: OnboardingPreferences) => void;
+  completeOnboarding: (prefs: OnboardingPreferences) => Promise<void>;
   buyStock: (
     stockId: string,
     quantity: number,
@@ -28,7 +28,7 @@ interface AppContextType {
     stockId: string,
     quantity: number,
   ) => { success: boolean; message: string };
-  logout: () => void;
+  logout: () => Promise<void>;
   resetAllData: () => void;
   addMoney: (amount: number) => void;
   resetMoney: () => void;
@@ -277,15 +277,35 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
     setIsLoading(false);
   };
 
-  const completeOnboarding = (prefs: OnboardingPreferences) => {
+  const completeOnboarding = async (prefs: OnboardingPreferences) => {
     if (!user) return;
-    const updated = {
-      ...user,
-      onboarding: prefs,
-      onboardingCompleted: true,
-    };
-    setUser(updated);
-    setActiveView("dashboard");
+    try {
+      const token = localStorage.getItem("trado_token");
+      const res = await fetch("/onboarding", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { "Authorization": `Bearer ${token}` } : {})
+        },
+        body: JSON.stringify({
+          occupation: prefs.occupation,
+          experience: prefs.experience,
+          primaryGoal: prefs.primaryGoal
+        })
+      });
+      const data = await res.json();
+      if (data.success) {
+        setUser(prev => prev ? { ...prev, onboarding: prefs, onboardingCompleted: true } : null);
+      } else {
+        // Fallback: set local state even if backend call failed
+        setUser(prev => prev ? { ...prev, onboarding: prefs, onboardingCompleted: true } : null);
+      }
+    } catch {
+      // Fallback: persist locally
+      setUser(prev => prev ? { ...prev, onboarding: prefs, onboardingCompleted: true } : null);
+    } finally {
+      setActiveView("dashboard");
+    }
   };
 
   // Trading Simulator Core Functions
@@ -452,11 +472,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
     };
   };
 
-  const logout = () => {
-    setUser(null);
-    setHoldings([]);
-    setTransactions([]);
-    setActiveView("landing");
+  const logout = async () => {
+    try {
+      const token = localStorage.getItem("trado_token");
+      if (token) {
+        await fetch("/auth/logout", {
+          method: "POST",
+          headers: { "Authorization": `Bearer ${token}` }
+        });
+      }
+    } catch { /* silent fail */ } finally {
+      localStorage.removeItem("trado_token");
+      setUser(null);
+      setHoldings([]);
+      setTransactions([]);
+      setActiveView("landing");
+    }
   };
 
   const resetAllData = () => {

@@ -1,7 +1,8 @@
 import React from 'react';
 import { useApp, AppProvider } from './AppContext';
 import { LandingPage } from './components/LandingPage';
-import { AuthPages } from './components/AuthPages';
+import { LoginPage }    from './components/auth/LoginPage';
+import { RegisterPage } from './components/auth/RegisterPage';
 import { OnboardingFlow } from './components/OnboardingFlow';
 import { Sidebar } from './components/Sidebar';
 import { RouteProgressBar } from './components/RouteProgressBar';
@@ -15,13 +16,37 @@ import { ProfileView } from './components/ProfileView';
 import { AmbientBackground } from './components/AmbientBackground';
 
 const AppContent: React.FC = () => {
-  const { user, activeView } = useApp();
+  const { user, activeView, setActiveView } = useApp();
 
-  // 1. Unauthenticated — show landing or auth pages (no sidebar)
+  // Mirror activeView → URL (one-way only, no feedback loop)
+  React.useEffect(() => {
+    if (user) return; // authenticated routes handled separately
+    if (activeView === 'register' && window.location.pathname !== '/register') {
+      window.history.pushState(null, '', '/register');
+    } else if (activeView === 'signin' && window.location.pathname !== '/login') {
+      window.history.pushState(null, '', '/login');
+    } else if (activeView === 'landing' && window.location.pathname !== '/login') {
+      window.history.replaceState(null, '', '/login');
+    }
+  }, [activeView, user]);
+
+  // Handle browser back/forward on unauthenticated routes
+  React.useEffect(() => {
+    const handlePop = () => {
+      if (!user) {
+        const path = window.location.pathname;
+        if (path === '/register') setActiveView('register');
+        else setActiveView('signin');
+      }
+    };
+    window.addEventListener('popstate', handlePop);
+    return () => window.removeEventListener('popstate', handlePop);
+  }, [user, setActiveView]);
+
+  // 1. Unauthenticated — show login or register based on activeView (source of truth)
   if (!user) {
-    if (activeView === 'signin')   return <AuthPages type="signin" />;
-    if (activeView === 'register') return <AuthPages type="register" />;
-    return <LandingPage />;
+    if (activeView === 'register') return <RegisterPage />;
+    return <LoginPage />;
   }
 
   // 2. Onboarding — full-screen, no sidebar

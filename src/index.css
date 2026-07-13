@@ -710,3 +710,221 @@
     font-size: 3rem !important;
   }
 }
+
+/* ═══════════════════════════════════════════════════════════════
+   AUTH INTERACTION — input focus, button hover/active
+   Pure CSS so no JS event handlers trigger parent re-renders.
+   ═══════════════════════════════════════════════════════════════ */
+
+/* Text inputs — accent glow on :focus */
+.auth-text-input:focus {
+  border-color: rgba(79, 107, 255, 0.48) !important;
+  box-shadow:   0 0 0 3px rgba(79, 107, 255, 0.10) !important;
+}
+
+/* OTP digit boxes */
+.auth-otp-digit:focus {
+  border-color: rgba(79, 107, 255, 0.25) !important;
+  outline: none !important;
+}
+
+/* Google button hover */
+.auth-google-btn:hover {
+  background:   rgba(255, 255, 255, 0.065) !important;
+  border-color: rgba(255, 255, 255, 0.14)  !important;
+}
+
+/* Primary button hover / active */
+.auth-primary-btn:not(:disabled):hover {
+  box-shadow: 0 6px 28px rgba(79, 107, 255, 0.40) !important;
+  filter:     brightness(1.07);
+}
+.auth-primary-btn:not(:disabled):active {
+  transform: scale(0.975);
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   AUTH BACKGROUND — blobs, aurora, animations
+   Scoped to .auth-blob / .auth-aurora — touches nothing else.
+   ═══════════════════════════════════════════════════════════════ */
+
+@keyframes auth-blob-drift-a {
+  0%   { transform: translate(0px,   0px)  scale(1.00); }
+  33%  { transform: translate(60px, -40px) scale(1.08); }
+  66%  { transform: translate(-30px, 30px) scale(0.95); }
+  100% { transform: translate(0px,   0px)  scale(1.00); }
+}
+@keyframes auth-blob-drift-b {
+  0%   { transform: translate(0px,   0px)  scale(1.00); }
+  40%  { transform: translate(-50px, 35px) scale(1.06); }
+  70%  { transform: translate(28px, -25px) scale(0.97); }
+  100% { transform: translate(0px,   0px)  scale(1.00); }
+}
+@keyframes auth-blob-drift-c {
+  0%   { transform: translate(0px, 0px)  scale(1.00); }
+  50%  { transform: translate(35px, 45px) scale(1.05); }
+  100% { transform: translate(0px, 0px)  scale(1.00); }
+}
+@keyframes auth-aurora-sweep {
+  0%   { background-position: 0%   50%; }
+  50%  { background-position: 100% 50%; }
+  100% { background-position: 0%   50%; }
+}
+
+.auth-blob {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(120px);
+  pointer-events: none;
+  will-change: transform;
+}
+.auth-blob-a {
+  width: 600px; height: 600px;
+  top: -120px; left: -140px;
+  background: radial-gradient(circle, rgba(79,107,255,0.13) 0%, transparent 70%);
+  animation: auth-blob-drift-a 38s ease-in-out infinite;
+}
+.auth-blob-b {
+  width: 680px; height: 680px;
+  bottom: -160px; right: -160px;
+  background: radial-gradient(circle, rgba(79,107,255,0.11) 0%, transparent 70%);
+  animation: auth-blob-drift-b 44s ease-in-out infinite;
+}
+.auth-blob-c {
+  width: 520px; height: 520px;
+  top: 5%; right: 10%;
+  background: radial-gradient(circle, rgba(111,79,255,0.10) 0%, transparent 70%);
+  animation: auth-blob-drift-c 52s ease-in-out infinite;
+}
+.auth-aurora {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.055;
+  background: linear-gradient(
+    120deg,
+    rgba(79,107,255,0)    0%,
+    rgba(79,107,255,0.55) 20%,
+    rgba(111,40,220,0.40) 40%,
+    rgba(79,107,255,0.55) 60%,
+    rgba(79,107,255,0)    80%
+  );
+  background-size: 280% 100%;
+  animation: auth-aurora-sweep 36s ease-in-out infinite;
+  will-change: background-position;
+}
+
+/* Click-pulse on primary auth buttons — plays once on click */
+@keyframes auth-btn-pulse {
+  0%   { box-shadow: 0 4px 20px rgba(79,107,255,0.22); }
+  40%  { box-shadow: 0 0 0 8px rgba(79,107,255,0.18), 0 4px 24px rgba(79,107,255,0.38); }
+  100% { box-shadow: 0 4px 20px rgba(79,107,255,0.22); }
+}
+.auth-btn-clicked {
+  animation: auth-btn-pulse 280ms ease-out forwards;
+}
+
+/* Mobile: reduce blobs for perf */
+@media (max-width: 639px) {
+  .auth-blob-b, .auth-blob-c { display: none; }
+  .auth-blob-a { width: 340px; height: 340px; filter: blur(90px); }
+  .auth-aurora { opacity: 0.03; }
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   AUTH FLOATING CARD ANIMATIONS
+   Each keyframe traces a full-viewport path (vw/vh) so cards
+   drift across the entire screen including behind the form card.
+   Z-index: widgets=1, form card=10 — browser stacking handles occlusion.
+   ═══════════════════════════════════════════════════════════════ */
+
+/* nifty — anchored top:12% left:3%, drifts right then across center */
+@keyframes auth-float-nifty {
+  0%   { transform: translate(0vw,    0vh);  }
+  20%  { transform: translate(30vw,   8vh);  }
+  45%  { transform: translate(55vw,  -4vh);  }
+  70%  { transform: translate(22vw,  18vh);  }
+  100% { transform: translate(0vw,    0vh);  }
+}
+
+/* ai — anchored top:72% left:4%, sweeps up-right and across */
+@keyframes auth-float-ai {
+  0%   { transform: translate(0vw,    0vh);  }
+  25%  { transform: translate(40vw, -24vh);  }
+  55%  { transform: translate(62vw,  -6vh);  }
+  80%  { transform: translate(18vw, -38vh);  }
+  100% { transform: translate(0vw,    0vh);  }
+}
+
+/* btc — anchored top:14% right:4%, drifts leftward into center */
+@keyframes auth-float-btc {
+  0%   { transform: translate(0vw,    0vh);  }
+  20%  { transform: translate(-32vw,  10vh); }
+  50%  { transform: translate(-56vw,  -4vh); }
+  75%  { transform: translate(-18vw,  20vh); }
+  100% { transform: translate(0vw,    0vh);  }
+}
+
+/* portfolio — anchored top:72% right:3%, sweeps up-left across */
+@keyframes auth-float-portfolio {
+  0%   { transform: translate(0vw,    0vh);  }
+  30%  { transform: translate(-42vw, -20vh); }
+  60%  { transform: translate(-60vw,   6vh); }
+  80%  { transform: translate(-24vw, -32vh); }
+  100% { transform: translate(0vw,    0vh);  }
+}
+
+/* capital — anchored top:38% left:2%, wide rightward sweep */
+@keyframes auth-float-capital {
+  0%   { transform: translate(0vw,    0vh);  }
+  25%  { transform: translate(36vw, -14vh);  }
+  55%  { transform: translate(58vw,   9vh);  }
+  75%  { transform: translate(28vw, -26vh);  }
+  100% { transform: translate(0vw,    0vh);  }
+}
+
+/* sentiment — anchored top:38% right:2%, wide leftward sweep */
+@keyframes auth-float-sentiment {
+  0%   { transform: translate(0vw,    0vh);  }
+  20%  { transform: translate(-28vw,  16vh); }
+  50%  { transform: translate(-52vw,  -6vh); }
+  75%  { transform: translate(-14vw,  24vh); }
+  100% { transform: translate(0vw,    0vh);  }
+}
+
+/* aapl — anchored top:56% left:3%, arcs up and right across center */
+@keyframes auth-float-aapl {
+  0%   { transform: translate(0vw,    0vh);  }
+  25%  { transform: translate(34vw,  -18vh); }
+  55%  { transform: translate(50vw,   10vh); }
+  80%  { transform: translate(20vw,  -28vh); }
+  100% { transform: translate(0vw,    0vh);  }
+}
+
+/* tsla — anchored top:56% right:3%, arcs up-left */
+@keyframes auth-float-tsla {
+  0%   { transform: translate(0vw,    0vh);  }
+  30%  { transform: translate(-36vw, -14vh); }
+  60%  { transform: translate(-52vw,   8vh); }
+  80%  { transform: translate(-22vw, -22vh); }
+  100% { transform: translate(0vw,    0vh);  }
+}
+
+/* sensex — anchored top:26% left:3%, fast cross-viewport path */
+@keyframes auth-float-sensex {
+  0%   { transform: translate(0vw,    0vh);  }
+  20%  { transform: translate(28vw,   14vh); }
+  50%  { transform: translate(48vw,   -8vh); }
+  75%  { transform: translate(16vw,   24vh); }
+  100% { transform: translate(0vw,    0vh);  }
+}
+
+/* gold — anchored top:26% right:4%, slow wide leftward drift */
+@keyframes auth-float-gold {
+  0%   { transform: translate(0vw,    0vh);  }
+  25%  { transform: translate(-30vw,  18vh); }
+  55%  { transform: translate(-44vw, -10vh); }
+  80%  { transform: translate(-12vw,  28vh); }
+  100% { transform: translate(0vw,    0vh);  }
+}
+

@@ -18,7 +18,7 @@ import { AmbientBackground } from './components/AmbientBackground';
 import { Cpu } from 'lucide-react';
 
 const AppContent: React.FC = () => {
-  const { user, activeView, setActiveView, authLoading } = useApp();
+  const { user, activeView, setActiveView, authLoading, isAuthInitialized } = useApp();
 
   // Mirror activeView → URL (one-way only, no feedback loop)
   React.useEffect(() => {
@@ -47,7 +47,7 @@ const AppContent: React.FC = () => {
   }, [user, setActiveView]);
 
   // 0. Startup/Auth Loading State
-  if (authLoading) {
+  if (!isAuthInitialized) {
     return (
       <div style={{
         minHeight: '100vh',
@@ -76,9 +76,9 @@ const AppContent: React.FC = () => {
 
   // 1. Unauthenticated — show landing, login or register based on activeView (source of truth)
   if (!user) {
-    if (activeView === 'landing') return <LandingPage />;
     if (activeView === 'register') return <RegisterPage />;
-    return <LoginPage />;
+    if (activeView === 'signin') return <LoginPage />;
+    return <LandingPage />;
   }
 
   // 2. Onboarding — full-screen, no sidebar

@@ -1,5 +1,5 @@
 import { supabase } from '../config/supabase';
-
+ 
 export interface GoogleSyncResult {
   success: boolean;
   redirectTo: '/onboarding' | '/dashboard';
@@ -13,7 +13,7 @@ export interface GoogleSyncResult {
     initialBalance: number;
   };
 }
-
+ 
 export class GoogleAuthService {
   /**
    * Verifies a Supabase access_token, syncs the user to our
@@ -23,11 +23,11 @@ export class GoogleAuthService {
   static async syncAndGetRedirect(accessToken: string): Promise<GoogleSyncResult> {
     // 1. Verify the token with Supabase Auth — get the authenticated user
     const { data: { user: authUser }, error: authError } = await supabase.auth.getUser(accessToken);
-
+ 
     if (authError || !authUser) {
       throw new Error('Invalid or expired Supabase session token.');
     }
-
+ 
     const email = (authUser.email || '').toLowerCase().trim();
     const fullName =
       authUser.user_metadata?.full_name ||
@@ -37,45 +37,134 @@ export class GoogleAuthService {
       authUser.user_metadata?.avatar_url ||
       authUser.user_metadata?.picture ||
       `https://ui-avatars.com/api/?name=${encodeURIComponent(fullName)}&background=4f6bff&color=fff`;
-
-    // 2. Check if a user with the same email exists in our `users` table
-    const { data: existingUser, error: fetchUserError } = await supabase
+ 
+    // 2. Perform dual lookup (by email and by Supabase Auth UID) to ensure we find existing accounts
+    const { data: userByEmail, error: emailFetchError } = await supabase
       .from('users')
       .select('*')
       .eq('email', email)
       .maybeSingle();
-
-    if (fetchUserError) {
-      throw new Error('Database lookup failed: ' + fetchUserError.message);
+ 
+    if (emailFetchError) {
+      throw new Error('Database lookup by email failed: ' + emailFetchError.message);
     }
-
+ 
+    const { data: userById, error: idFetchError } = await supabase
+      .from('users')
+      .select('*')
+      .eq('id', authUser.id)
+      .maybeSingle();
+ 
+    if (idFetchError) {
+      throw new Error('Database lookup by ID failed: ' + idFetchError.message);
+    }
+ 
+    const existingUser = userByEmail || userById;
     let finalUserId: string;
     let profileCompleted = false;
-
-    if (!existingUser) {
-      // 3a. New User: Create record in `users` table using the Supabase Auth UID
-      const supabaseUserId = authUser.id;
-      const { data: newUser, error: insertUserError } = await supabase
+ 
+    if (existingUser) {
+      finalUserId = existingUser.id;
+      let updatedProvider = existingUser.auth_provider;
+      const providers = existingUser.auth_provider.split(',').map((p: string) => p.trim());
+      if (!providers.includes('google')) {
+        providers.push('google');
+      }
+      updatedProvider = providers.join(',');
+ 
+      const needsUpdate =
+        existingUser.email.toLowerCase().trim() !== email ||
+        existingUser.auth_provider !== updatedProvider;
+ 
+      if (needsUpdate) {
+        const { error: updateError } = await supabase
+          .from('users')
+          .update({
+            email: email,
+            auth_provider: updatedProvider,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', finalUserId);
+ 
+        if (updateError) {
+          throw new Error('Failed to update existing user record: ' + updateError.message);
+        }
+      }
+    } else {
+      // If user does not exist by email or ID, create them with Supabase Auth UID as primary key
+      const userData = {
+        id: authUser.id,
+        email: email,
+        auth_provider: 'google',
+        email_verified: true,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+ 
+      const { data: newDbUser, error: insertUserError } = await supabase
         .from('users')
-        .insert({
-          id: supabaseUserId, // use Supabase Auth UID
-          email,
-          auth_provider: 'google',
-          email_verified: true,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
-        })
+        .insert(userData)
         .select('*')
         .single();
-
-      if (insertUserError || !newUser) {
-        throw new Error('Failed to create user record: ' + (insertUserError?.message || 'Unknown error'));
+ 
+      if (insertUserError) {
+        // If it violates unique constraint, it means the user was concurrently created
+        if (
+          insertUserError.code === '23505' ||
+          insertUserError.message.includes('unique constraint') ||
+          insertUserError.message.includes('duplicate key')
+        ) {
+          const { data: retryUser, error: retryError } = await supabase
+            .from('users')
+            .select('*')
+            .eq('email', email)
+            .maybeSingle();
+ 
+          if (retryError || !retryUser) {
+            throw new Error('Failed to create user record: ' + insertUserError.message);
+          }
+          finalUserId = retryUser.id;
+        } else {
+          throw new Error('Failed to create user record: ' + insertUserError.message);
+        }
+      } else if (!newDbUser) {
+        throw new Error('Failed to create user record: Unknown error');
+      } else {
+        finalUserId = newDbUser.id;
       }
-
-      finalUserId = newUser.id;
-
-      // 3b. Create user profile in `user_profiles`
-      const { error: insertProfileError } = await supabase
+    }
+ 
+    // Handle user profile
+    const { data: profileRow, error: profileFetchError } = await supabase
+      .from('user_profiles')
+      .select('*')
+      .eq('user_id', finalUserId)
+      .maybeSingle();
+ 
+    if (profileFetchError) {
+      throw new Error('Failed to fetch user profile: ' + profileFetchError.message);
+    }
+ 
+    if (profileRow) {
+      profileCompleted = profileRow.profile_completed;
+ 
+      // Update full_name & avatar_url if they are different or missing
+      const nameChanged = fullName && profileRow.full_name !== fullName;
+      const avatarChanged = avatarUrl && profileRow.avatar_url !== avatarUrl;
+ 
+      if (nameChanged || avatarChanged) {
+        await supabase
+          .from('user_profiles')
+          .update({
+            ...(nameChanged ? { full_name: fullName } : {}),
+            ...(avatarChanged ? { avatar_url: avatarUrl } : {}),
+            updated_at: new Date().toISOString()
+          })
+          .eq('user_id', finalUserId);
+      }
+    } else {
+      // If profile is missing, try to create it
+      const { data: insertedProfile, error: insertProfileError } = await supabase
         .from('user_profiles')
         .insert({
           user_id: finalUserId,
@@ -84,91 +173,32 @@ export class GoogleAuthService {
           profile_completed: false,
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString()
-        });
-
-      if (insertProfileError) {
-        // Rollback
-        await supabase.from('users').delete().eq('id', finalUserId);
-        throw new Error('Failed to create user profile: ' + insertProfileError.message);
-      }
-
-      profileCompleted = false;
-    } else {
-      // 3c. Existing User: Check if auth_provider needs to be updated to support Google
-      finalUserId = existingUser.id;
-      
-      let updatedProvider = existingUser.auth_provider;
-      if (!existingUser.auth_provider.includes('google')) {
-        // Merge auth providers
-        const providers = existingUser.auth_provider.split(',').map((p: string) => p.trim());
-        if (!providers.includes('google')) {
-          providers.push('google');
-        }
-        updatedProvider = providers.join(',');
-      }
-
-      // Update auth_provider, email_verified, and updated_at
-      const { error: updateUserError } = await supabase
-        .from('users')
-        .update({
-          auth_provider: updatedProvider,
-          email_verified: true,
-          updated_at: new Date().toISOString()
         })
-        .eq('id', finalUserId);
-
-      if (updateUserError) {
-        throw new Error('Failed to update user auth provider: ' + updateUserError.message);
-      }
-
-      // Sync user profile name and avatar if they changed
-      const { data: profileRow, error: profileFetchError } = await supabase
-        .from('user_profiles')
         .select('*')
-        .eq('user_id', finalUserId)
         .maybeSingle();
-
-      if (profileFetchError) {
-        throw new Error('Failed to fetch user profile: ' + profileFetchError.message);
-      }
-
-      if (profileRow) {
-        profileCompleted = profileRow.profile_completed;
-
-        // Update full_name & avatar_url if they are different or missing
-        const nameChanged = fullName && profileRow.full_name !== fullName;
-        const avatarChanged = avatarUrl && profileRow.avatar_url !== avatarUrl;
-
-        if (nameChanged || avatarChanged) {
-          await supabase
+ 
+      if (insertProfileError) {
+        // If it violates unique constraint, it means the profile exists (created by a trigger or race condition)
+        if (
+          insertProfileError.code === '23505' ||
+          insertProfileError.message.includes('unique constraint') ||
+          insertProfileError.message.includes('duplicate key')
+        ) {
+          // Gracefully fetch the existing profile
+          const { data: retryProfile } = await supabase
             .from('user_profiles')
-            .update({
-              ...(nameChanged ? { full_name: fullName } : {}),
-              ...(avatarChanged ? { avatar_url: avatarUrl } : {}),
-              updated_at: new Date().toISOString()
-            })
-            .eq('user_id', finalUserId);
+            .select('*')
+            .eq('user_id', finalUserId)
+            .maybeSingle();
+          profileCompleted = retryProfile ? retryProfile.profile_completed : false;
+        } else {
+          throw new Error('Failed to create user profile: ' + insertProfileError.message);
         }
       } else {
-        // If profile is missing for some reason, create it
-        const { error: insertProfileError } = await supabase
-          .from('user_profiles')
-          .insert({
-            user_id: finalUserId,
-            full_name: fullName,
-            avatar_url: avatarUrl,
-            profile_completed: false,
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString()
-          });
-
-        if (insertProfileError) {
-          throw new Error('Failed to recreate missing user profile: ' + insertProfileError.message);
-        }
-        profileCompleted = false;
+        profileCompleted = insertedProfile ? insertedProfile.profile_completed : false;
       }
     }
-
+ 
     return {
       success: true,
       redirectTo: profileCompleted ? '/dashboard' : '/onboarding',

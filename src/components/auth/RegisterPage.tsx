@@ -38,6 +38,7 @@ export const RegisterPage: React.FC = () => {
   const [cardHov,   setCardHov]   = useState(false);
   const [spotXY,    setSpotXY]    = useState({ x: 0, y: 0 });
   const [focusedIdx, setFocusedIdx] = useState<number | null>(null);
+  const [resendTimer, setResendTimer] = useState(0);
 
   const cardRef = useRef<HTMLDivElement>(null);
   const otpRefs = useRef<(HTMLInputElement | null)[]>([]);
@@ -163,9 +164,61 @@ export const RegisterPage: React.FC = () => {
       setSuccess(true);
       // Navigate immediately to onboarding (or dashboard if already completed)
       // using the server-returned user data — no localStorage guessing, no setTimeout delay.
-      setTimeout(() => loginUserFromResponse(data.data.user), 900);
+      setTimeout(() => {
+        // Ensure we have a valid user object before transitioning
+        if (data.data && data.data.user) {
+          const userData = {
+            ...data.data.user,
+            onboardingCompleted: data.data.user.onboardingCompleted ?? false
+          };
+          loginUserFromResponse(userData);
+        } else {
+          // Fallback if user data is missing
+          setActiveView("onboarding");
+        }
+      }, 1200);
     } catch {
       setVerifying(false);
+      setError("Network error. Please try again.");
+    }
+  };
+
+  // ─── Resend OTP Logic ──────────────────────────────────────────────────────
+  useEffect(() => {
+    if (step === "otp" && resendTimer === 0) {
+      setResendTimer(60);
+    }
+  }, [step]);
+
+  useEffect(() => {
+    let timer: any;
+    if (resendTimer > 0) {
+      timer = setInterval(() => setResendTimer(t => t - 1), 1000);
+    }
+    return () => clearInterval(timer);
+  }, [resendTimer]);
+
+  const handleResendOtp = async () => {
+    if (resendTimer > 0) return;
+    setError("");
+    try {
+      const res = await fetch("/auth/send-otp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: email.trim(), purpose: "signup" })
+      });
+      const data = await res.json();
+      if (data.success) {
+        setResendTimer(60);
+        // Show success message in green
+        setError("SUCCESS_GREEN:A new verification code has been sent to your email.");
+        setTimeout(() => {
+          setError(prev => prev.startsWith("SUCCESS_GREEN:") ? "" : prev);
+        }, 4000);
+      } else {
+        setError(data.message || "Failed to resend code.");
+      }
+    } catch {
       setError("Network error. Please try again.");
     }
   };
@@ -616,7 +669,19 @@ export const RegisterPage: React.FC = () => {
                           Enter the 6-digit code sent to <strong style={{ color: "#7B9EFF" }}>{email}</strong>
                         </p>
 
-                        <ErrorBanner message={error} />
+                        {error.startsWith("SUCCESS_GREEN:") ? (
+                          <div style={{
+                            padding: "10px 14px", borderRadius: "10px", marginBottom: "20px",
+                            background: "rgba(62, 207, 142, 0.1)", border: "1px solid rgba(62, 207, 142, 0.2)",
+                            color: "var(--color-trado-success)", fontSize: "13px", textAlign: "center",
+                            display: "flex", alignItems: "center", justifyContent: "center", gap: "8px"
+                          }}>
+                            <CheckCircle style={{ width: 14, height: 14 }} />
+                            {error.replace("SUCCESS_GREEN:", "")}
+                          </div>
+                        ) : (
+                          <ErrorBanner message={error} />
+                        )}
 
                         <form onSubmit={verifyOtp} style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
                           {/* OTP inputs with glass design */}
@@ -638,17 +703,33 @@ export const RegisterPage: React.FC = () => {
                             ))}
                           </div>
 
-                          {/* Sandbox Badge */}
-                          <div style={{ textAlign: "center" }}>
-                            <span style={{
-                              fontSize: "10px", fontFamily: "var(--font-mono)", color: MUTED,
-                              background: "rgba(255,255,255,0.03)",
-                              border: "1px solid rgba(255,255,255,0.06)",
-                              padding: "5px 12px", borderRadius: "8px",
-                              letterSpacing: "0.04em",
-                            }}>
-                              Sandbox token: <strong style={{ color: "#7B9EFF" }}>482619</strong>
-                            </span>
+                          {/* Resend OTP Control */}
+                          <div style={{ textAlign: "center", marginBottom: "8px" }}>
+                            {resendTimer > 0 ? (
+                              <span style={{ fontSize: "12px", color: MUTED, fontFamily: "var(--font-mono)" }}>
+                                Resend OTP in <strong style={{ color: ACCENT }}>{resendTimer}s</strong>
+                              </span>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={handleResendOtp}
+                                style={{
+                                  background: "none", border: "none", cursor: "pointer", padding: "4px 12px",
+                                  fontSize: "12px", color: "#7B9EFF", fontWeight: 600,
+                                  transition: "all 0.2s ease",
+                                }}
+                                onMouseEnter={e => {
+                                  e.currentTarget.style.color = "#fff";
+                                  e.currentTarget.style.textShadow = "0 0 8px rgba(123, 158, 255, 0.4)";
+                                }}
+                                onMouseLeave={e => {
+                                  e.currentTarget.style.color = "#7B9EFF";
+                                  e.currentTarget.style.textShadow = "none";
+                                }}
+                              >
+                                Resend OTP
+                              </button>
+                            )}
                           </div>
 
                           <VerifyBtn disabled={verifying} />

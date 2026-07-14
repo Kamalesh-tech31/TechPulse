@@ -100,83 +100,36 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
 
   // Simulate Stock Market Ticks (Price fluctuations)
   useEffect(() => {
-    const interval = setInterval(() => {
-      setStocks((prevStocks) => {
-        return prevStocks.map((stock) => {
-          // Fluctuates between -0.4% and +0.4%
-          const pctChange = (Math.random() * 0.8 - 0.4) / 100;
-          const priceDiff = stock.price * pctChange;
-          const newPrice = Math.round((stock.price + priceDiff) * 100) / 100;
+    const loadStocks = async () => {
+      try {
+        const response = await fetch("/api/nifty25");
+        const data = await response.json();
 
-          // Re-evaluate high and low
-          const newHigh = newPrice > stock.high ? newPrice : stock.high;
-          const newLow = newPrice < stock.low ? newPrice : stock.low;
+        const formattedStocks = data.map((stock: any) => ({
+          id: stock.info.symbol,
+          symbol: stock.info.symbol,
+          name: stock.info.companyName,
+          price: stock.priceInfo.lastPrice,
+          change: stock.priceInfo.pChange,
+          high: stock.priceInfo.intraDayHighLow.max,
+          low: stock.priceInfo.intraDayHighLow.min,
+          volume: stock.securityInfo?.issuedSize || 0,
+        }));
 
-          // Calculate net day percentage change from the base historical price
-          const basePrice = stock.history[0] || stock.price;
-          const totalChange =
-            Math.round(((newPrice - basePrice) / basePrice) * 10000) / 100;
+        setStocks(formattedStocks);
 
-          // Rolling 7-day history updates slowly
-          let updatedHistory = [...stock.history];
-          if (Math.random() > 0.85) {
-            updatedHistory.shift();
-            updatedHistory.push(newPrice);
-          } else {
-            updatedHistory[updatedHistory.length - 1] = newPrice;
-          }
+        // We'll convert this data into your Stock objects next.
+      } catch (err) {
+        console.error(err);
+      }
+    };
 
-          return {
-            ...stock,
-            price: newPrice,
-            change: totalChange,
-            high: newHigh,
-            low: newLow,
-            history: updatedHistory,
-          };
-        });
-      });
-    }, 4000);
+    loadStocks();
+
+    const interval = setInterval(loadStocks, 15000);
 
     return () => clearInterval(interval);
   }, []);
-
-  // Recalculate Portfolio Holdings whenever stock prices change
-  useEffect(() => {
-    if (holdings.length === 0) return;
-
-    setHoldings((prevHoldings) => {
-      let updated = false;
-      const newHoldings = prevHoldings.map((holding) => {
-        const liveStock = stocks.find((s) => s.id === holding.stockId);
-        if (!liveStock) return holding;
-
-        const currentPrice = liveStock.price;
-        const currentValue =
-          Math.round(holding.quantity * currentPrice * 100) / 100;
-        const profitLoss =
-          Math.round((currentValue - holding.totalCost) * 100) / 100;
-        const profitLossPercentage =
-          holding.totalCost > 0
-            ? Math.round((profitLoss / holding.totalCost) * 10000) / 100
-            : 0;
-
-        if (holding.currentPrice !== currentPrice) {
-          updated = true;
-          return {
-            ...holding,
-            currentPrice,
-            currentValue,
-            profitLoss,
-            profitLossPercentage,
-          };
-        }
-        return holding;
-      });
-
-      return updated ? newHoldings : prevHoldings;
-    });
-  }, [stocks]);
 
   // Auth Functions
   const registerUser = (name: string, email: string) => {

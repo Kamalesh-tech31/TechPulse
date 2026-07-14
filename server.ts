@@ -4,6 +4,16 @@ import dotenv from 'dotenv';
 import { createServer as createViteServer } from 'vite';
 import { GoogleGenAI, Type } from '@google/genai';
 import { exec } from 'child_process';
+import {
+  getStock,
+  getNifty25Stocks,
+  startMarketUpdater,
+} from "./server/services/marketService";
+
+
+
+
+
 
 dotenv.config();
 
@@ -646,6 +656,34 @@ app.get(['/auth/callback', '/auth/callback/'], async (req, res) => {
 });
 
 // Serve Vite dev server middleware in development mode
+// Test Route - Live Reliance Stock Price
+import { NseIndia } from "stock-nse-india";
+
+const nse = new NseIndia();
+
+app.get("/api/test-stock", async (req, res) => {
+  try {
+    const data = await nse.getEquityDetails("RELIANCE");
+
+    res.json(data);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json(err);
+  }
+});
+app.get("/api/nifty25", async (req, res) => {
+  try {
+    const stocks = await getNifty25Stocks();
+
+    res.json(stocks);
+  } catch (err: any) {
+    console.error(err);
+
+    res.status(500).json({
+      error: err.message,
+    });
+  }
+});
 async function startServer() {
   if (process.env.NODE_ENV !== 'production') {
     const vite = await createViteServer({
@@ -665,6 +703,8 @@ async function startServer() {
   app.listen(PORT, '0.0.0.0', () => {
     const url = `http://localhost:${PORT}`;
     console.log(`[Trado Server] Running on ${url}`);
+
+    startMarketUpdater(); 
 
     // Automatically open the app in browser in development mode
     if (process.env.NODE_ENV !== 'production') {

@@ -76,19 +76,24 @@ export const StockAnalysisView: React.FC = () => {
   };
 
   // Render miniature line chart for list view
-  const renderSparkline = (history: number[], change: number) => {
+  const renderSparkline = (history: number[] = [], change: number) => {
+    if (!history || history.length === 0) {
+      return null;
+    }
     const min = Math.min(...history);
     const max = Math.max(...history);
     const range = max - min || 1;
     const width = 100;
     const height = 35;
-    const points = history.map((val, idx) => {
-      const x = (idx / (history.length - 1)) * width;
-      const y = height - ((val - min) / range) * (height - 6) - 3;
-      return `${x},${y}`;
-    }).join(' ');
+    const points = history
+      .map((val, idx) => {
+        const x = (idx / (history.length - 1)) * width;
+        const y = height - ((val - min) / range) * (height - 6) - 3;
+        return `${x},${y}`;
+      })
+      .join(" ");
 
-    const strokeColor = change >= 0 ? '#34d399' : '#f87171'; // emerald-400 or red-400
+    const strokeColor = change >= 0 ? "#34d399" : "#f87171"; // emerald-400 or red-400
 
     return (
       <svg className="w-[100px] h-[35px]" viewBox="0 0 100 35">
@@ -441,7 +446,7 @@ export const StockAnalysisView: React.FC = () => {
                     filteredStocks.map((stock) => {
                       const isProfit = stock.change >= 0;
                       return (
-                        <tr 
+                        <tr
                           key={stock.id}
                           onClick={() => {
                             setSelectedStockId(stock.id);
@@ -455,25 +460,37 @@ export const StockAnalysisView: React.FC = () => {
                               <span className="font-mono font-bold text-white text-sm tracking-tight flex items-center gap-1.5">
                                 {stock.symbol}
                                 <span className="text-[9px] font-mono font-normal text-gray-500 bg-white/[0.02] border border-white/[0.04] px-1 rounded">
-                                  {stock.sector.split(' ')[0]}
+                                  {stock.sector
+                                    ? stock.sector.split(" ")[0]
+                                    : "NSE"}
                                 </span>
                               </span>
-                              <span className="text-xs text-gray-400 truncate max-w-[200px] mt-0.5">{stock.name}</span>
+                              <span className="text-xs text-gray-400 truncate max-w-[200px] mt-0.5">
+                                {stock.name}
+                              </span>
                             </div>
                           </td>
                           <td className="py-4 px-5 text-right font-mono font-semibold text-white">
                             ₹{stock.price.toFixed(2)}
                           </td>
                           <td className="py-4 px-5 text-right">
-                            <span className={`inline-flex items-center gap-0.5 text-xs font-mono font-bold px-2 py-1 rounded-lg ${
-                              isProfit ? 'text-emerald-400 bg-emerald-950/20 border border-emerald-500/10' : 'text-rose-400 bg-rose-950/20 border border-trado-danger/10'
-                            }`}>
-                              {isProfit ? '+' : ''}{stock.change.toFixed(2)}%
+                            <span
+                              className={`inline-flex items-center gap-0.5 text-xs font-mono font-bold px-2 py-1 rounded-lg ${
+                                isProfit
+                                  ? "text-emerald-400 bg-emerald-950/20 border border-emerald-500/10"
+                                  : "text-rose-400 bg-rose-950/20 border border-trado-danger/10"
+                              }`}
+                            >
+                              {isProfit ? "+" : ""}
+                              {stock.change.toFixed(2)}%
                             </span>
                           </td>
                           <td className="py-4 px-5 flex justify-center items-center h-full">
                             <div className="py-1">
-                              {renderSparkline(stock.history, stock.change)}
+                              {renderSparkline(
+                                stock.history ?? [],
+                                stock.change,
+                              )}
                             </div>
                           </td>
                           <td className="py-4 px-5 text-right font-mono text-xs text-emerald-400">
@@ -516,32 +533,41 @@ export const StockAnalysisView: React.FC = () => {
                         <div>
                           <span className="font-mono font-bold text-white text-base tracking-tight flex items-center gap-1.5">
                             {stock.symbol}
-                            <span className="text-[9px] font-mono font-normal text-gray-500 bg-white/[0.02] border border-white/[0.04] px-1 rounded">
-                              {stock.sector}
-                            </span>
+                            <span>{stock.sector || "NSE"}</span>
                           </span>
-                          <span className="text-xs text-gray-400 block mt-0.5">{stock.name}</span>
+                          <span className="text-xs text-gray-400 block mt-0.5">
+                            {stock.name}
+                          </span>
                         </div>
                         <div className="text-right">
                           <span className="font-mono font-bold text-white text-base block">
                             ₹{stock.price.toFixed(2)}
                           </span>
-                          <span className={`inline-flex items-center gap-0.5 text-[10px] font-mono font-bold px-1.5 py-0.5 rounded mt-1.5 ${
-                            isProfit ? 'text-emerald-400 bg-emerald-950/20 border border-emerald-500/10' : 'text-rose-400 bg-rose-950/20 border border-trado-danger/10'
-                          }`}>
-                            {isProfit ? '+' : ''}{stock.change.toFixed(2)}%
+                          <span
+                            className={`inline-flex items-center gap-0.5 text-[10px] font-mono font-bold px-1.5 py-0.5 rounded mt-1.5 ${
+                              isProfit
+                                ? "text-emerald-400 bg-emerald-950/20 border border-emerald-500/10"
+                                : "text-rose-400 bg-rose-950/20 border border-trado-danger/10"
+                            }`}
+                          >
+                            {isProfit ? "+" : ""}
+                            {stock.change.toFixed(2)}%
                           </span>
                         </div>
                       </div>
-                      
+
                       <div className="flex justify-between text-xs font-mono pt-2 border-t border-white/[0.02] text-gray-500">
                         <div>
                           <span>High: </span>
-                          <span className="text-emerald-400">₹{stock.high.toFixed(1)}</span>
+                          <span className="text-emerald-400">
+                            ₹{stock.high.toFixed(1)}
+                          </span>
                         </div>
                         <div>
                           <span>Low: </span>
-                          <span className="text-rose-400">₹{stock.low.toFixed(1)}</span>
+                          <span className="text-rose-400">
+                            ₹{stock.low.toFixed(1)}
+                          </span>
                         </div>
                         <div>
                           <span>Vol: </span>

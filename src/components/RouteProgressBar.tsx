@@ -18,7 +18,7 @@ import { useApp } from '../AppContext';
  */
 export const RouteProgressBar: React.FC = () => {
   const { activeView } = useApp();
-  const [phase, setPhase] = useState<'idle' | 'loading' | 'done'>('idle');
+  const [phase, setPhase] =  useState<'idle' | 'loading' | 'done'>('idle');
   const timersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
 
   useEffect(() => {

@@ -4,12 +4,7 @@ import dotenv from 'dotenv';
 import { createServer as createViteServer } from 'vite';
 import { GoogleGenAI, Type } from '@google/genai';
 import { exec } from 'child_process';
-import {
-  getStock,
-  getNifty25Stocks,
-  startMarketUpdater,
-} from "./server/services/marketService";
-
+import { getStock, getMultipleStocks } from "./server/services/marketService";
 
 
 
@@ -657,25 +652,57 @@ app.get(['/auth/callback', '/auth/callback/'], async (req, res) => {
 
 // Serve Vite dev server middleware in development mode
 // Test Route - Live Reliance Stock Price
-import { NseIndia } from "stock-nse-india";
 
-const nse = new NseIndia();
+
+// Lightweight wrapper to fetch stock data from stock-nse-india client.
+// The library exposes different method names across versions, so try common ones.
+
 
 app.get("/api/test-stock", async (req, res) => {
   try {
-    const data = await nse.getEquityDetails("RELIANCE");
-
+    const data = await getStock("RELIANCE.NS");
     res.json(data);
-  } catch (err) {
+  } catch (err: any) {
     console.error(err);
-    res.status(500).json(err);
+    res.status(500).json({
+      error: err.message,
+    });
   }
 });
+
 app.get("/api/nifty25", async (req, res) => {
   try {
-    const stocks = await getNifty25Stocks();
+    const symbols = [
+      "RELIANCE.NS",
+      "TCS.NS",
+      "INFY.NS",
+      "HDFCBANK.NS",
+      "ICICIBANK.NS",
+      "SBIN.NS",
+      "BHARTIARTL.NS",
+      "ITC.NS",
+      "LT.NS",
+      "HINDUNILVR.NS",
+      "AXISBANK.NS",
+      "KOTAKBANK.NS",
+      "BAJFINANCE.NS",
+      "MARUTI.NS",
+      "ASIANPAINT.NS",
+      "SUNPHARMA.NS",
+      "TITAN.NS",
+      "NESTLEIND.NS",
+      "ULTRACEMCO.NS",
+      "ONGC.NS",
+      "POWERGRID.NS",
+      "NTPC.NS",
+      "WIPRO.NS",
+      "TECHM.NS",
+      "ADANIPORTS.NS"
+    ];
 
-    res.json(stocks);
+    const data = await getMultipleStocks(symbols);
+
+    res.json(data);
   } catch (err: any) {
     console.error(err);
 
@@ -704,7 +731,7 @@ async function startServer() {
     const url = `http://localhost:${PORT}`;
     console.log(`[Trado Server] Running on ${url}`);
 
-    startMarketUpdater(); 
+    
 
     // Automatically open the app in browser in development mode
     if (process.env.NODE_ENV !== 'production') {

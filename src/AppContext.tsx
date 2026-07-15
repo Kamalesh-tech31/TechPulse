@@ -106,14 +106,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
         const data = await response.json();
 
         const formattedStocks = data.map((stock: any) => ({
-          id: stock.info.symbol,
-          symbol: stock.info.symbol,
-          name: stock.info.companyName,
-          price: stock.priceInfo.lastPrice,
-          change: stock.priceInfo.pChange,
-          high: stock.priceInfo.intraDayHighLow.max,
-          low: stock.priceInfo.intraDayHighLow.min,
-          volume: stock.securityInfo?.issuedSize || 0,
+          id: stock.symbol,
+          symbol: stock.symbol.replace(".NS", ""),
+          name: stock.name,
+          price: stock.price,
+          change:
+            ((stock.price - stock.previousClose) / stock.previousClose) * 100,
+          high: stock.high,
+          low: stock.low,
+          volume: stock.volume,
+
+          marketCap: "-",
+          peRatio: "-",
+          high52: stock.high,
+          low52: stock.low,
+          sector: "NSE",
+          description: stock.name,
+
+          history: [stock.low, stock.previousClose, stock.price, stock.high],
         }));
 
         setStocks(formattedStocks);

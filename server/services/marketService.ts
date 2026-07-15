@@ -1,61 +1,43 @@
-import { NseIndia } from "stock-nse-india";
-import { NIFTY_25 } from "../nifty25";
+import YahooFinance from "yahoo-finance2";
 
-
-const nse = new NseIndia();
-
-let cache: any[] = [];
-let isFetching = false;
-
-export function startMarketUpdater() {
-    console.log("Starting Market Updater...");
-  
-    // Initial fetch
-    getNifty25Stocks();
-  
-    // Refresh every 10 seconds
-    setInterval(() => {
-      console.log("Refreshing market data...");
-      getNifty25Stocks();
-    }, 15000);
-  }
-
+const yahooFinance = new YahooFinance();
 
 export async function getStock(symbol: string) {
-    return await Promise.race([
-      nse.getEquityDetails(symbol),
-      new Promise((_, reject) =>
-        setTimeout(() => reject(new Error("Timeout")), 5000)
-      ),
-    ]);
-  }
+  try {
+    const quote = await yahooFinance.quote(symbol);
 
-  export async function getNifty25Stocks() {
-    if (isFetching) {
-      return cache;
-    }
-  
-    isFetching = true;
-  
-    try {
-      const stocks = [];
-  
-      for (const symbol of NIFTY_25) {
-        console.log("Fetching:", symbol);
-  
-        try {
-          const stock = await getStock(symbol);
-          console.log(symbol, stock);
-          console.log("Success:", symbol);
-          stocks.push(stock);
-        } catch (err: any) {
-          console.log("Failed:", symbol, err.message);
-        }
-      }
-  
-      cache = stocks;
-      return cache;
-    } finally {
-      isFetching = false;
-    }
+    return {
+      symbol: quote.symbol,
+      name: quote.shortName,
+      price: quote.regularMarketPrice,
+      previousClose: quote.regularMarketPreviousClose,
+      open: quote.regularMarketOpen,
+      high: quote.regularMarketDayHigh,
+      low: quote.regularMarketDayLow,
+      volume: quote.regularMarketVolume,
+      currency: quote.currency,
+      exchange: quote.fullExchangeName,
+      marketState: quote.marketState,
+      time: quote.regularMarketTime,
+    };
+  } catch (err) {
+    console.error(err);
+    throw err;
   }
+}
+
+
+export async function getMultipleStocks(symbols: string[]) {
+  const stocks = await Promise.all(
+    symbols.map(async (symbol) => {
+      try {
+        return await getStock(symbol);
+      } catch (err) {
+        console.error(`Failed to fetch ${symbol}`);
+        return null;
+      }
+    })
+  );
+
+  return stocks.filter(Boolean);
+}

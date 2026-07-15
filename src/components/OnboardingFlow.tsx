@@ -1,10 +1,286 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useApp } from '../AppContext';
-import { GraduationCap, Briefcase, ChevronRight, HelpCircle, Target, Award, LineChart } from 'lucide-react';
-import { motion } from 'motion/react';
+import { GraduationCap, Briefcase, Award, Target, Check } from 'lucide-react';
+import { motion, AnimatePresence } from 'motion/react';
 import { OnboardingPreferences } from '../types';
-import { MotionGraphics } from './MotionGraphics';
+import { PremiumOnboardingBackground } from './PremiumOnboardingBackground';
 
+// ─────────────────────────────────────────────────────────────────────────────
+//  Design System
+// ─────────────────────────────────────────────────────────────────────────────
+const ACCENT = '#4F6BFF';
+const SUCCESS = '#3ecf8e';
+const SURFACE = '#151B26';
+const BG = '#0D1117';
+const TEXT = '#E8EAED';
+const MUTED = 'rgba(232,234,237,0.5)';
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Onboarding Steps Configuration
+// ─────────────────────────────────────────────────────────────────────────────
+const STEPS = [
+  {
+    id: 1,
+    key: 'occupation',
+    icon: GraduationCap,
+    title: 'What is your occupation?',
+    subtitle: 'We personalize terminology and trading guides based on your daily timeline.',
+    options: [
+      {
+        value: 'Student',
+        title: 'Student',
+        desc: 'Academics, simplified finance definitions, and long-term habits.',
+        icon: GraduationCap,
+      },
+      {
+        value: 'Professional',
+        title: 'Professional',
+        desc: 'Corporate planning, industry analytics, and wealth compounds.',
+        icon: Briefcase,
+      },
+    ],
+  },
+  {
+    id: 2,
+    key: 'experience',
+    icon: Award,
+    title: 'What is your stock market experience?',
+    subtitle: 'This dictates the difficulty of generated quizzes and tutorial modules.',
+    options: [
+      {
+        value: 'Beginner',
+        title: 'Beginner',
+        desc: 'No prior background. Want to learn terms, simple indicators, and placing orders.',
+      },
+      {
+        value: 'Intermediate',
+        title: 'Intermediate',
+        desc: 'Understand basics. Interested in technical analysis, moving averages, and P&L strategies.',
+      },
+      {
+        value: 'Advanced',
+        title: 'Advanced',
+        desc: 'Familiar with valuations. Want to test high-conviction portfolios with advanced AI auditing.',
+      },
+    ],
+  },
+  {
+    id: 3,
+    key: 'primaryGoal',
+    icon: Target,
+    title: 'What is your primary goal?',
+    subtitle: 'Your AI dashboard features will prioritize tracking this outcome.',
+    options: [
+      {
+        value: 'Learning',
+        title: 'Learning Market Concepts',
+        desc: 'Focus on completing academic modules, lessons, and terminology.',
+      },
+      {
+        value: 'Stock Analysis',
+        title: 'Deep Stock Analysis',
+        desc: 'Filter, search, and study financial performance tables of corporations.',
+      },
+      {
+        value: 'Virtual Trading',
+        title: 'Virtual Active Trading',
+        desc: 'Focus on executing transactions, testing strategies, and growing wallet balance.',
+      },
+      {
+        value: 'Portfolio Improvement',
+        title: 'Portfolio Optimization',
+        desc: 'Analyze asset correlations, diversify sectors, and implement AI audits.',
+      },
+    ],
+  },
+];
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Premium Progress Indicator
+// ─────────────────────────────────────────────────────────────────────────────
+const PremiumProgressIndicator: React.FC<{ currentStep: number; totalSteps: number }> = ({
+  currentStep,
+  totalSteps,
+}) => {
+  return (
+    <div style={{ marginBottom: '32px' }}>
+      {/* Progress Bar */}
+      <div style={{ display: 'flex', gap: '8px', marginBottom: '16px' }}>
+        {Array.from({ length: totalSteps }).map((_, i) => (
+          <motion.div
+            key={i}
+            initial={{ scaleX: 0 }}
+            animate={{ scaleX: i < currentStep ? 1 : 0.3 }}
+            transition={{ duration: 0.4, ease: 'easeOut' }}
+            style={{
+              flex: 1,
+              height: '3px',
+              borderRadius: '2px',
+              background: i < currentStep ? ACCENT : 'rgba(255,255,255,0.08)',
+              transformOrigin: 'left',
+              boxShadow: i < currentStep ? `0 0 12px ${ACCENT}60` : 'none',
+            }}
+          />
+        ))}
+      </div>
+
+      {/* Step Counter */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <motion.div
+          initial={{ opacity: 0, y: -8 }}
+          animate={{ opacity: 1, y: 0 }}
+          key={currentStep}
+          style={{
+            fontSize: '13px',
+            fontFamily: 'var(--font-mono)',
+            color: MUTED,
+            textTransform: 'uppercase',
+            letterSpacing: '0.08em',
+          }}
+        >
+          Step {currentStep} of {totalSteps}
+        </motion.div>
+        <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.3)', fontFamily: 'var(--font-mono)' }}>
+          {Math.round((currentStep / totalSteps) * 100)}%
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Option Card Component
+// ─────────────────────────────────────────────────────────────────────────────
+interface OptionCardProps {
+  option: any;
+  isSelected: boolean;
+  isGrid: boolean;
+  onClick: () => void;
+}
+
+const OptionCard: React.FC<OptionCardProps> = ({ option, isSelected, isGrid, onClick }) => {
+  const Icon = option.icon;
+
+  return (
+    <motion.button
+      layout
+      onClick={onClick}
+      initial={{ opacity: 0, scale: 0.95 }}
+      animate={{ opacity: 1, scale: 1 }}
+      whileHover={{ scale: isSelected ? 1 : 1.02 }}
+      whileTap={{ scale: 0.98 }}
+      transition={{ duration: 0.2 }}
+      style={{
+        position: 'relative',
+        width: '100%',
+        padding: isGrid ? '24px 20px' : '16px',
+        borderRadius: '16px',
+        border: isSelected ? `2px solid ${ACCENT}` : '1px solid rgba(255,255,255,0.08)',
+        background: isSelected ? `${ACCENT}12` : 'rgba(255,255,255,0.03)',
+        backdropFilter: 'blur(12px)',
+        cursor: 'pointer',
+        textAlign: 'left',
+        transition: 'all 0.3s cubic-bezier(0.22,1,0.36,1)',
+        boxShadow: isSelected
+          ? `0 0 24px ${ACCENT}30, inset 0 1px 1px rgba(255,255,255,0.1)`
+          : 'inset 0 1px 1px rgba(255,255,255,0.04)',
+        display: 'flex',
+        flexDirection: isGrid ? 'column' : 'row',
+        gap: isGrid ? '12px' : '16px',
+        alignItems: isGrid ? 'flex-start' : 'flex-start',
+      }}
+      onMouseEnter={(e) => {
+        if (!isSelected) {
+          (e.currentTarget as HTMLButtonElement).style.borderColor = `${ACCENT}40`;
+          (e.currentTarget as HTMLButtonElement).style.background = 'rgba(255,255,255,0.05)';
+        }
+      }}
+      onMouseLeave={(e) => {
+        if (!isSelected) {
+          (e.currentTarget as HTMLButtonElement).style.borderColor = 'rgba(255,255,255,0.08)';
+          (e.currentTarget as HTMLButtonElement).style.background = 'rgba(255,255,255,0.03)';
+        }
+      }}
+    >
+      {/* Selection Indicator */}
+      <div
+        style={{
+          position: 'absolute',
+          top: '12px',
+          right: '12px',
+          width: '20px',
+          height: '20px',
+          borderRadius: '50%',
+          border: `2px solid ${isSelected ? ACCENT : 'rgba(255,255,255,0.2)'}`,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          background: isSelected ? `${ACCENT}20` : 'transparent',
+          transition: 'all 0.3s ease',
+        }}
+      >
+        {isSelected && (
+          <motion.div
+            initial={{ scale: 0 }}
+            animate={{ scale: 1 }}
+            transition={{ duration: 0.2, type: 'spring', stiffness: 300 }}
+          >
+            <Check size={12} color={ACCENT} />
+          </motion.div>
+        )}
+      </div>
+
+      {/* Icon */}
+      {Icon && (
+        <motion.div
+          animate={{ scale: isSelected ? 1.1 : 1 }}
+          transition={{ duration: 0.2 }}
+          style={{
+            width: isGrid ? '32px' : '24px',
+            height: isGrid ? '32px' : '24px',
+            borderRadius: '10px',
+            background: `${ACCENT}15`,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            color: ACCENT,
+            flexShrink: 0,
+          }}
+        >
+          <Icon size={isGrid ? 18 : 16} />
+        </motion.div>
+      )}
+
+      {/* Content */}
+      <div style={{ flex: 1 }}>
+        <h4
+          style={{
+            fontSize: isGrid ? '14px' : '13.5px',
+            fontWeight: 600,
+            color: TEXT,
+            margin: '0 0 4px 0',
+          }}
+        >
+          {option.title}
+        </h4>
+        <p
+          style={{
+            fontSize: isGrid ? '12px' : '11.5px',
+            color: MUTED,
+            margin: 0,
+            lineHeight: 1.4,
+          }}
+        >
+          {option.desc}
+        </p>
+      </div>
+    </motion.button>
+  );
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Main Onboarding Component
+// ─────────────────────────────────────────────────────────────────────────────
 export const OnboardingFlow: React.FC = () => {
   const { user, completeOnboarding } = useApp();
   const [step, setStep] = useState<number>(1);
@@ -13,235 +289,245 @@ export const OnboardingFlow: React.FC = () => {
     experience: undefined,
     primaryGoal: undefined,
   });
+  const [isTransitioning, setIsTransitioning] = useState(false);
 
-  const handleNext = () => {
-    if (step < 3) {
-      setStep((s) => s + 1);
-    } else {
-      if (prefs.occupation && prefs.experience && prefs.primaryGoal) {
-        completeOnboarding(prefs as OnboardingPreferences);
-      }
-    }
-  };
+  const currentStepConfig = STEPS.find((s) => s.id === step);
+  
+  // Safety check: if step is out of bounds, redirect or reset
+  if (!currentStepConfig) {
+    return (
+      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: BG, color: TEXT }}>
+        <div style={{ textAlign: 'center' }}>
+          <p>Onboarding configuration error. Resetting...</p>
+          <button onClick={() => setStep(1)} style={{ color: ACCENT, background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline' }}>
+            Restart Onboarding
+          </button>
+        </div>
+      </div>
+    );
+  }
 
-  const handleSelect = (key: keyof OnboardingPreferences, value: any) => {
-    setPrefs((prev) => ({ ...prev, [key]: value }));
-    // Auto-advance to improve UX flow
+  const selectedValue = prefs[currentStepConfig.key as keyof OnboardingPreferences];
+
+  // Handle option selection with auto-advance
+  const handleSelect = (value: string) => {
+    if (isTransitioning) return;
+
+    setPrefs((prev) => ({
+      ...prev,
+      [currentStepConfig.key]: value,
+    }));
+
+    // Auto-advance after 350ms
+    setIsTransitioning(true);
     setTimeout(() => {
       if (step < 3) {
         setStep((s) => s + 1);
       } else {
-        if (key === 'primaryGoal' && prefs.occupation && prefs.experience) {
-          completeOnboarding({
-            ...prefs,
-            primaryGoal: value,
-          } as OnboardingPreferences);
-        }
+        // Final step: complete onboarding
+        completeOnboarding({
+          ...prefs,
+          [currentStepConfig.key]: value,
+        } as OnboardingPreferences);
       }
-    }, 400);
+      setIsTransitioning(false);
+    }, 350);
   };
 
+  const isGrid = currentStepConfig.options && currentStepConfig.options.length <= 2;
+
   return (
-    <div className="min-h-screen flex items-center justify-center p-6 relative overflow-hidden z-10" style={{ background: 'var(--color-trado-bg)' }}>
-      {/* Background gradients and premium motion graphics background */}
-      <MotionGraphics />
-      
-      <div className="absolute top-[-20%] left-[-20%] w-[50%] h-[50%] rounded-full opacity-[0.05] blur-[150px] pointer-events-none z-0" style={{ background: 'var(--color-trado-accent)' }}></div>
-      <div className="absolute bottom-[-20%] right-[-20%] w-[50%] h-[50%] rounded-full opacity-[0.04] blur-[150px] pointer-events-none z-0" style={{ background: 'var(--color-trado-accent)' }}></div>
+    <div
+      style={{
+        minHeight: '100vh',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: '24px',
+        background: BG,
+        position: 'relative',
+        overflow: 'hidden',
+      }}
+    >
+      <PremiumOnboardingBackground />
 
-      <div className="w-full max-w-xl relative z-10">
-        {/* Progress Bar */}
-        <div className="mb-8 flex items-center justify-between">
-          <div className="flex gap-2 w-full">
-            {[1, 2, 3].map((s) => (
-              <div
-                key={s}
-                className={`h-1.5 rounded-full flex-1 transition-all duration-300 ${
-                  s <= step ? 'shadow-[0_0_8px_rgba(59,130,246,0.4)]' : 'bg-white/[0.08]'
-                }`}
-                style={{ background: s <= step ? 'var(--color-trado-accent)' : undefined }}
-              />
-            ))}
-          </div>
-          <span className="text-xs font-mono text-gray-500 ml-4 shrink-0 uppercase tracking-wider">
-            Step {step} of 3
-          </span>
-        </div>
+      {/* Main Container */}
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5, ease: 'easeOut' }}
+        style={{
+          width: '100%',
+          maxWidth: '520px',
+          position: 'relative',
+          zIndex: 10,
+        }}
+      >
+        {/* Card */}
+        <div
+          style={{
+            background: SURFACE,
+            borderRadius: '20px',
+            border: '1px solid rgba(255,255,255,0.06)',
+            boxShadow: '0 20px 50px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.04)',
+            padding: '32px',
+            backdropFilter: 'blur(12px)',
+          }}
+        >
+          {/* Progress Indicator */}
+          <PremiumProgressIndicator currentStep={step} totalSteps={3} />
 
-        {/* Step Content */}
-        <div className="glassmorphism p-8 rounded-2xl border-white/[0.05] glow-border">
-          {step === 1 && (
-            <div>
-              <div className="flex items-center gap-2 mb-4">
-                <GraduationCap className="h-6 w-6" style={{ color: 'var(--color-trado-accent)' }} />
-                <span className="text-xs font-mono uppercase tracking-wider" style={{ color: 'var(--color-trado-accent)' }}>PROFILE TYPES</span>
-              </div>
-              <h2 className="text-2xl sm:text-3xl font-display font-bold text-white mb-2">
-                What is your occupation?
-              </h2>
-              <p className="text-gray-400 text-sm mb-6">
-                We personalize terminology and trading guides based on your daily timeline.
-              </p>
-
-              <div className="grid sm:grid-cols-2 gap-4">
-                <button
-                  type="button"
-                  onClick={() => handleSelect('occupation', 'Student')}
-                  className={`p-6 rounded-xl border text-left transition duration-200 group flex flex-col justify-between h-40 ${
-                    prefs.occupation === 'Student'
-                      ? 'text-white'
-                      : 'border-white/[0.06] bg-white/[0.01] text-gray-300'
-                  }`}
-                  style={prefs.occupation === 'Student' ? { borderColor: 'var(--color-trado-accent)', background: 'rgba(59,130,246,0.06)', boxShadow: '0 0 15px rgba(59,130,246,0.12)' } : undefined}
-                  onMouseEnter={e => { if (prefs.occupation !== 'Student') (e.currentTarget as HTMLButtonElement).style.borderColor = 'rgba(59,130,246,0.3)'; }}
-                  onMouseLeave={e => { if (prefs.occupation !== 'Student') (e.currentTarget as HTMLButtonElement).style.borderColor = 'rgba(255,255,255,0.06)'; }}
+          {/* Step Header */}
+          <motion.div
+            key={`header-${step}`}
+            initial={{ opacity: 0, y: -12 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 12 }}
+            transition={{ duration: 0.3 }}
+            style={{ marginBottom: '28px' }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '12px' }}>
+              {currentStepConfig?.icon && (
+                <div
+                  style={{
+                    width: '28px',
+                    height: '28px',
+                    borderRadius: '8px',
+                    background: `${ACCENT}15`,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: ACCENT,
+                  }}
                 >
-                  <GraduationCap className="h-8 w-8 transition" style={{ color: prefs.occupation === 'Student' ? 'var(--color-trado-accent)' : undefined, transform: prefs.occupation === 'Student' ? 'scale(1.1)' : undefined }} />
-                  <div>
-                    <h3 className="font-display font-semibold text-white">Student</h3>
-                    <p className="text-gray-500 text-xs mt-1">Academics, simplified finance definitions, and long-term habits.</p>
-                  </div>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => handleSelect('occupation', 'Professional')}
-                  className={`p-6 rounded-xl border text-left transition duration-200 group flex flex-col justify-between h-40 ${
-                    prefs.occupation === 'Professional'
-                      ? 'text-white'
-                      : 'border-white/[0.06] bg-white/[0.01] text-gray-300'
-                  }`}
-                  style={prefs.occupation === 'Professional' ? { borderColor: 'var(--color-trado-accent)', background: 'rgba(59,130,246,0.06)', boxShadow: '0 0 15px rgba(59,130,246,0.12)' } : undefined}
-                  onMouseEnter={e => { if (prefs.occupation !== 'Professional') (e.currentTarget as HTMLButtonElement).style.borderColor = 'rgba(59,130,246,0.3)'; }}
-                  onMouseLeave={e => { if (prefs.occupation !== 'Professional') (e.currentTarget as HTMLButtonElement).style.borderColor = 'rgba(255,255,255,0.06)'; }}
-                >
-                  <Briefcase className="h-8 w-8 transition" style={{ color: prefs.occupation === 'Professional' ? 'var(--color-trado-accent)' : undefined, transform: prefs.occupation === 'Professional' ? 'scale(1.1)' : undefined }} />
-                  <div>
-                    <h3 className="font-display font-semibold text-white">Professional</h3>
-                    <p className="text-gray-500 text-xs mt-1">Corporate planning, industry analytics, and wealth compounds.</p>
-                  </div>
-                </button>
-              </div>
+                  <currentStepConfig.icon size={16} />
+                </div>
+              )}
+              <span
+                style={{
+                  fontSize: '10px',
+                  fontFamily: 'var(--font-mono)',
+                  color: ACCENT,
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.1em',
+                }}
+              >
+                Step {step}
+              </span>
             </div>
-          )}
+            <h2
+              style={{
+                fontSize: 'clamp(20px, 4vw, 24px)',
+                fontWeight: 700,
+                color: TEXT,
+                margin: '0 0 8px 0',
+                letterSpacing: '-0.01em',
+              }}
+            >
+              {currentStepConfig?.title}
+            </h2>
+            <p
+              style={{
+                fontSize: '13.5px',
+                color: MUTED,
+                margin: 0,
+                lineHeight: 1.6,
+              }}
+            >
+              {currentStepConfig?.subtitle}
+            </p>
+          </motion.div>
 
-          {step === 2 && (
-            <div>
-              <div className="flex items-center gap-2 mb-4">
-                <Award className="h-6 w-6" style={{ color: 'var(--color-trado-accent)' }} />
-                <span className="text-xs font-mono uppercase tracking-wider" style={{ color: 'var(--color-trado-accent)' }}>EXPERIENCE</span>
-              </div>
-              <h2 className="text-2xl sm:text-3xl font-display font-bold text-white mb-2">
-                What is your stock market experience?
-              </h2>
-              <p className="text-gray-400 text-sm mb-6">
-                This dictates the difficulty of generated quizzes and tutorial modules.
-              </p>
+          {/* Options Container with AnimatePresence for smooth transitions */}
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={`options-${step}`}
+              initial={{ opacity: 0, y: 16 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -16 }}
+              transition={{ duration: 0.3 }}
+              style={{
+                display: 'grid',
+                gridTemplateColumns: isGrid ? 'repeat(2, 1fr)' : '1fr',
+                gap: '12px',
+              }}
+            >
+              {currentStepConfig?.options.map((option) => (
+                <OptionCard
+                  key={option.value}
+                  option={option}
+                  isSelected={selectedValue === option.value}
+                  isGrid={isGrid}
+                  onClick={() => handleSelect(option.value)}
+                />
+              ))}
+            </motion.div>
+          </AnimatePresence>
 
-              <div className="space-y-3">
-                {[
-                  { value: 'Beginner', title: 'Beginner', desc: 'No prior background. Want to learn terms, simple indicators, and placing orders.' },
-                  { value: 'Intermediate', title: 'Intermediate', desc: 'Understand basics. Interested in technical analysis, moving averages, and P&L strategies.' },
-                  { value: 'Advanced', title: 'Advanced', desc: 'Familiar with valuations. Want to test high-conviction portfolios with advanced AI auditing.' }
-                ].map((item) => (
-                  <button
-                    key={item.value}
-                    type="button"
-                    onClick={() => handleSelect('experience', item.value)}
-                    className={`w-full p-4 rounded-xl border text-left transition duration-200 flex items-start gap-4 ${
-                      prefs.experience === item.value
-                        ? 'text-white'
-                        : 'border-white/[0.06] bg-white/[0.01] text-gray-300'
-                    }`}
-                    style={prefs.experience === item.value ? { borderColor: 'var(--color-trado-accent)', background: 'rgba(59,130,246,0.05)' } : undefined}
-                    onMouseEnter={e => { if (prefs.experience !== item.value) (e.currentTarget as HTMLButtonElement).style.borderColor = 'rgba(59,130,246,0.25)'; }}
-                    onMouseLeave={e => { if (prefs.experience !== item.value) (e.currentTarget as HTMLButtonElement).style.borderColor = 'rgba(255,255,255,0.06)'; }}
-                  >
-                    <div className="h-5 w-5 rounded-full border flex items-center justify-center mt-0.5 shrink-0" style={{ borderColor: prefs.experience === item.value ? 'var(--color-trado-accent)' : '#4B5563' }}>
-                      {prefs.experience === item.value && <div className="h-2.5 w-2.5 rounded-full" style={{ background: 'var(--color-trado-accent)' }} />}
-                    </div>
-                    <div>
-                      <h4 className="font-display font-semibold text-white text-sm">{item.title}</h4>
-                      <p className="text-gray-500 text-xs mt-0.5">{item.desc}</p>
-                    </div>
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {step === 3 && (
-            <div>
-              <div className="flex items-center gap-2 mb-4">
-                <Target className="h-6 w-6" style={{ color: 'var(--color-trado-accent)' }} />
-                <span className="text-xs font-mono uppercase tracking-wider" style={{ color: 'var(--color-trado-accent)' }}>PRIMARY OBJECTIVE</span>
-              </div>
-              <h2 className="text-2xl sm:text-3xl font-display font-bold text-white mb-2">
-                What is your primary goal?
-              </h2>
-              <p className="text-gray-400 text-sm mb-6">
-                Your AI dashboard features will prioritize tracking this outcome.
-              </p>
-
-              <div className="space-y-3">
-                {[
-                  { value: 'Learning', title: 'Learning Market Concepts', desc: 'Focus on completing academic modules, lessons, and terminology.' },
-                  { value: 'Stock Analysis', title: 'Deep Stock Analysis', desc: 'Filter, search, and study financial performance tables of corporations.' },
-                  { value: 'Virtual Trading', title: 'Virtual Active Trading', desc: 'Focus on executing transactions, testing strategies, and growing wallet balance.' },
-                  { value: 'Portfolio Improvement', title: 'Portfolio Optimization', desc: 'Analyze asset correlations, diversify sectors, and implement AI audits.' }
-                ].map((item) => (
-                  <button
-                    key={item.value}
-                    type="button"
-                    onClick={() => handleSelect('primaryGoal', item.value)}
-                    className={`w-full p-4 rounded-xl border text-left transition duration-200 flex items-start gap-4 ${
-                      prefs.primaryGoal === item.value
-                        ? 'text-white'
-                        : 'border-white/[0.06] bg-white/[0.01] text-gray-300'
-                    }`}
-                    style={prefs.primaryGoal === item.value ? { borderColor: 'var(--color-trado-accent)', background: 'rgba(59,130,246,0.05)' } : undefined}
-                    onMouseEnter={e => { if (prefs.primaryGoal !== item.value) (e.currentTarget as HTMLButtonElement).style.borderColor = 'rgba(59,130,246,0.25)'; }}
-                    onMouseLeave={e => { if (prefs.primaryGoal !== item.value) (e.currentTarget as HTMLButtonElement).style.borderColor = 'rgba(255,255,255,0.06)'; }}
-                  >
-                    <div className="h-5 w-5 rounded-full border flex items-center justify-center mt-0.5 shrink-0" style={{ borderColor: prefs.primaryGoal === item.value ? 'var(--color-trado-accent)' : '#4B5563' }}>
-                      {prefs.primaryGoal === item.value && <div className="h-2.5 w-2.5 rounded-full" style={{ background: 'var(--color-trado-accent)' }} />}
-                    </div>
-                    <div>
-                      <h4 className="font-display font-semibold text-white text-sm">{item.title}</h4>
-                      <p className="text-gray-500 text-xs mt-0.5">{item.desc}</p>
-                    </div>
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Stepper Navigation Actions */}
-          <div className="mt-8 pt-6 border-t border-white/[0.04] flex items-center justify-between">
+          {/* Navigation Buttons (for manual control if needed) */}
+          <div
+            style={{
+              marginTop: '28px',
+              paddingTop: '20px',
+              borderTop: '1px solid rgba(255,255,255,0.05)',
+              display: 'flex',
+              gap: '12px',
+              justifyContent: 'space-between',
+            }}
+          >
             <button
-              type="button"
+              onClick={() => {
+                if (step > 1) setStep((s) => s - 1);
+              }}
               disabled={step === 1}
-              onClick={() => setStep((s) => Math.max(1, s - 1))}
-              className="text-gray-500 hover:text-white transition disabled:opacity-30 disabled:pointer-events-none text-sm font-medium"
+              style={{
+                padding: '10px 16px',
+                borderRadius: '10px',
+                border: '1px solid rgba(255,255,255,0.1)',
+                background: 'rgba(255,255,255,0.03)',
+                color: step === 1 ? 'rgba(255,255,255,0.3)' : TEXT,
+                fontSize: '12.5px',
+                fontWeight: 500,
+                cursor: step === 1 ? 'not-allowed' : 'pointer',
+                transition: 'all 0.2s ease',
+                opacity: step === 1 ? 0.5 : 1,
+              }}
+              onMouseEnter={(e) => {
+                if (step > 1) {
+                  (e.currentTarget as HTMLButtonElement).style.background = 'rgba(255,255,255,0.08)';
+                  (e.currentTarget as HTMLButtonElement).style.borderColor = 'rgba(255,255,255,0.15)';
+                }
+              }}
+              onMouseLeave={(e) => {
+                (e.currentTarget as HTMLButtonElement).style.background = 'rgba(255,255,255,0.03)';
+                (e.currentTarget as HTMLButtonElement).style.borderColor = 'rgba(255,255,255,0.1)';
+              }}
             >
-              Previous
+              ← Previous
             </button>
-            <button
-              type="button"
-              onClick={handleNext}
-              disabled={
-                (step === 1 && !prefs.occupation) ||
-                (step === 2 && !prefs.experience) ||
-                (step === 3 && !prefs.primaryGoal)
-              }
-              className="bg-white hover:bg-gray-200 text-black px-5 py-2 rounded-lg text-sm font-semibold transition flex items-center gap-1 hover:scale-[1.02] active:scale-[0.98] disabled:opacity-40 disabled:pointer-events-none"
-            >
-              Next
-              <ChevronRight className="h-4 w-4" />
-            </button>
+
+            <div style={{ fontSize: '11px', color: MUTED, display: 'flex', alignItems: 'center' }}>
+              Selections auto-advance
+            </div>
           </div>
         </div>
-      </div>
+
+        {/* Subtle Footer Text */}
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 0.4, duration: 0.4 }}
+          style={{
+            marginTop: '20px',
+            textAlign: 'center',
+            fontSize: '11px',
+            color: 'rgba(255,255,255,0.25)',
+            fontFamily: 'var(--font-mono)',
+          }}
+        >
+          Your preferences can be updated in Settings anytime
+        </motion.div>
+      </motion.div>
     </div>
   );
 };

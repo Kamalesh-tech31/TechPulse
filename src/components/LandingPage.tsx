@@ -12,7 +12,7 @@ import {
 } from "lucide-react";
 import { motion, useReducedMotion } from "motion/react";
 import { AnimatedMarketBackground } from "./AnimatedMarketBackground";
-import { GlobalFinancialNetwork } from "./GlobalFinancialNetwork";
+import { PremiumStaticHero } from "./PremiumStaticHero";
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  Feature Cards
@@ -557,7 +557,7 @@ export const LandingPage: React.FC = () => {
             zIndex: 1,
           }}
         >
-          <GlobalFinancialNetwork />
+          <PremiumStaticHero />
         </motion.div>
       </section>
 

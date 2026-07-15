@@ -47,31 +47,47 @@ export const StockAnalysisView: React.FC = () => {
     return matchesSearch && matchesSector;
   });
 
-  const handleBuy = (stockId: string) => {
+  const [isTrading, setIsTrading] = useState(false);
+
+  const handleBuy = async (stockId: string) => {
     setTradeMessage(null);
     if (tradeQty <= 0) {
       setTradeMessage({ type: 'error', text: 'Please specify a quantity greater than zero.' });
       return;
     }
-    const res = buyStock(stockId, tradeQty);
-    if (res.success) {
-      setTradeMessage({ type: 'success', text: res.message });
-    } else {
-      setTradeMessage({ type: 'error', text: res.message });
+    setIsTrading(true);
+    try {
+      const res = await buyStock(stockId, tradeQty);
+      if (res.success) {
+        setTradeMessage({ type: 'success', text: res.message });
+      } else {
+        setTradeMessage({ type: 'error', text: res.message });
+      }
+    } catch (err: any) {
+      setTradeMessage({ type: 'error', text: err.message || 'Failed to complete transaction.' });
+    } finally {
+      setIsTrading(false);
     }
   };
 
-  const handleSell = (stockId: string) => {
+  const handleSell = async (stockId: string) => {
     setTradeMessage(null);
     if (tradeQty <= 0) {
       setTradeMessage({ type: 'error', text: 'Please specify a quantity greater than zero.' });
       return;
     }
-    const res = sellStock(stockId, tradeQty);
-    if (res.success) {
-      setTradeMessage({ type: 'success', text: res.message });
-    } else {
-      setTradeMessage({ type: 'error', text: res.message });
+    setIsTrading(true);
+    try {
+      const res = await sellStock(stockId, tradeQty);
+      if (res.success) {
+        setTradeMessage({ type: 'success', text: res.message });
+      } else {
+        setTradeMessage({ type: 'error', text: res.message });
+      }
+    } catch (err: any) {
+      setTradeMessage({ type: 'error', text: err.message || 'Failed to complete transaction.' });
+    } finally {
+      setIsTrading(false);
     }
   };
 
@@ -349,18 +365,20 @@ export const StockAnalysisView: React.FC = () => {
 
                 <div className="grid grid-cols-2 gap-3 pt-2">
                   <button
+                    disabled={isTrading}
                     onClick={() => handleBuy(selectedStock.id)}
-                    className="bg-emerald-500 hover:bg-emerald-600 active:scale-[0.98] text-white font-semibold py-3 rounded-xl transition shadow-[0_0_15px_rgba(16,185,129,0.2)] text-sm flex items-center justify-center gap-1"
+                    className="bg-emerald-500 hover:bg-emerald-600 active:scale-[0.98] text-white font-semibold py-3 rounded-xl transition shadow-[0_0_15px_rgba(16,185,129,0.2)] text-sm flex items-center justify-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     <ArrowUpRight className="h-4 w-4" />
-                    Buy shares
+                    {isTrading ? 'Trading...' : 'Buy shares'}
                   </button>
                   <button
+                    disabled={isTrading}
                     onClick={() => handleSell(selectedStock.id)}
-                    className="bg-trado-danger hover:bg-red-600 active:scale-[0.98] text-white font-semibold py-3 rounded-xl transition shadow-[0_0_15px_rgba(239,68,68,0.2)] text-sm flex items-center justify-center gap-1 cursor-pointer"
+                    className="bg-trado-danger hover:bg-red-600 active:scale-[0.98] text-white font-semibold py-3 rounded-xl transition shadow-[0_0_15px_rgba(239,68,68,0.2)] text-sm flex items-center justify-center gap-1 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     <ArrowDownRight className="h-4 w-4" />
-                    Sell shares
+                    {isTrading ? 'Trading...' : 'Sell shares'}
                   </button>
                 </div>
               </div>

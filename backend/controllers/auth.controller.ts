@@ -7,6 +7,7 @@ import { EmailService } from '../services/email.service';
 import { JWTService } from '../services/jwt.service';
 import { GoogleAuthService } from '../services/googleAuth.service';
 import { supabase } from '../config/supabase';
+import { getOrCreateWallet } from '../services/portfolio.service';
 import {
   registerSchema,
   loginSchema,
@@ -159,6 +160,9 @@ export class AuthController {
           profile = created.profile;
         }
 
+        // Ensure wallet exists for this user (idempotent — creates with ₹10L if missing)
+        const wallet = await getOrCreateWallet(user.id);
+
         // Invalidate cache
         signupCache.delete(formattedEmail);
 
@@ -173,7 +177,7 @@ export class AuthController {
             user: {
               name: profile?.full_name || cached.name,
               email: user.email,
-              walletBalance: 1000000,
+              walletBalance: wallet.available_cash,
               initialBalance: 1000000,
               onboardingCompleted: profile?.profile_completed || false,
               googlePicture: profile?.avatar_url || ''
@@ -220,6 +224,9 @@ export class AuthController {
       const profile = await UserService.getProfileByUserId(user.id);
       const token = JWTService.signToken({ userId: user.id, email: user.email });
 
+      // Fetch real wallet balance (creates with ₹10L if first login)
+      const wallet = await getOrCreateWallet(user.id);
+
       return res.status(200).json({
         success: true,
         message: 'Login successful.',
@@ -228,7 +235,7 @@ export class AuthController {
           user: {
             name: profile?.full_name || user.email.split('@')[0],
             email: user.email,
-            walletBalance: 1000000,
+            walletBalance: wallet.available_cash,
             initialBalance: 1000000,
             onboardingCompleted: profile?.profile_completed || false,
             googlePicture: profile?.avatar_url || ''
@@ -344,6 +351,8 @@ export class AuthController {
       }
 
       const profile = await UserService.getProfileByUserId(req.user.userId);
+      // Fetch real wallet balance from DB
+      const wallet = await getOrCreateWallet(req.user.userId);
 
       return res.status(200).json({
         success: true,
@@ -351,7 +360,7 @@ export class AuthController {
           user: {
             name: profile?.full_name || req.user.email.split('@')[0],
             email: req.user.email,
-            walletBalance: 1000000,
+            walletBalance: wallet.available_cash,
             initialBalance: 1000000,
             onboardingCompleted: profile?.profile_completed || false,
             googlePicture: profile?.avatar_url || ''

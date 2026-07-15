@@ -1,7 +1,8 @@
-import React, { createContext, useContext, useState, useEffect } from "react";
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from "react";
 import {
   Stock,
-  Holding,
+  GroupedHolding,
+  DbTransaction,
   Transaction,
   UserProfile,
   OnboardingPreferences,
@@ -9,7 +10,9 @@ import {
 import { INITIAL_STOCKS } from "./mockData";
 import { supabase } from "./supabase";
 
-// Backend-returned user shape (from /auth/login, /auth/verify-otp, /auth/google)
+// ─────────────────────────────────────────────────────────────
+//  Backend-returned user shape (from /auth/login, /auth/verify-otp, /auth/google)
+// ─────────────────────────────────────────────────────────────
 export interface BackendUser {
   name: string;
   email: string;
@@ -19,50 +22,54 @@ export interface BackendUser {
   googlePicture?: string;
 }
 
+// ─────────────────────────────────────────────────────────────
+//  Context type
+// ─────────────────────────────────────────────────────────────
 interface AppContextType {
   user: UserProfile | null;
   stocks: Stock[];
-  holdings: Holding[];
+  holdings: GroupedHolding[];
   transactions: Transaction[];
   isLoading: boolean;
   authLoading: boolean;
   isAuthInitialized: boolean;
   activeView: string;
   selectedStockId: string | null;
+  portfolioLoading: boolean;
+
   registerUser: (name: string, email: string) => void;
   loginUser: (email: string) => boolean;
   loginWithGoogleUser: (name: string, email: string, picture?: string) => void;
   loginUserFromResponse: (userData: BackendUser) => void;
   completeOnboarding: (prefs: OnboardingPreferences) => Promise<void>;
-  buyStock: (
-    stockId: string,
-    quantity: number,
-  ) => { success: boolean; message: string };
-  sellStock: (
-    stockId: string,
-    quantity: number,
-  ) => { success: boolean; message: string };
+  buyStock: (stockId: string, quantity: number) => Promise<{ success: boolean; message: string }>;
+  sellStock: (stockId: string, quantity: number) => Promise<{ success: boolean; message: string }>;
   logout: () => Promise<void>;
   resetAllData: () => void;
   addMoney: (amount: number) => void;
   resetMoney: () => void;
   setActiveView: (view: string) => void;
   setSelectedStockId: (id: string | null) => void;
+  refreshPortfolio: () => Promise<void>;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
-export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
-  children,
-}) => {
+// ─────────────────────────────────────────────────────────────
+//  Helper: get the auth token
+// ─────────────────────────────────────────────────────────────
+function getToken(): string | null {
+  return localStorage.getItem("trado_token");
+}
+
+// ─────────────────────────────────────────────────────────────
+//  Provider
+// ─────────────────────────────────────────────────────────────
+export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<UserProfile | null>(() => {
     const saved = localStorage.getItem("stockeasy_user");
     if (saved) {
-      try {
-        return JSON.parse(saved);
-      } catch {
-        return null;
-      }
+      try { return JSON.parse(saved); } catch { return null; }
     }
     return null;
   });
@@ -72,17 +79,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
     return saved ? JSON.parse(saved) : INITIAL_STOCKS;
   });
 
-  const [holdings, setHoldings] = useState<Holding[]>(() => {
-    const saved = localStorage.getItem("stockeasy_holdings");
-    return saved ? JSON.parse(saved) : [];
-  });
+  // ── DB-backed portfolio state ───────────────────────────────
+  const [holdings, setHoldings] = useState<GroupedHolding[]>([]);
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [portfolioLoading, setPortfolioLoading] = useState(false);
 
-  const [transactions, setTransactions] = useState<Transaction[]>(() => {
-    const saved = localStorage.getItem("stockeasy_transactions");
-    return saved ? JSON.parse(saved) : [];
-  });
-
-  // Derive the correct initial view synchronously — no useEffect flash
+  // ── UI state ───────────────────────────────────────────────
   const [activeView, setActiveView] = useState<string>(() => {
     const saved = localStorage.getItem("stockeasy_user");
     if (!saved) return "landing";
@@ -90,9 +92,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
       const u = JSON.parse(saved);
       if (!u.onboardingCompleted) return "onboarding";
       return "dashboard";
-    } catch {
-      return "landing";
-    }
+    } catch { return "landing"; }
   });
 
   const [selectedStockId, setSelectedStockId] = useState<string | null>(null);
@@ -100,7 +100,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
   const [authLoading, setAuthLoading] = useState<boolean>(true);
   const [isAuthInitialized, setIsAuthInitialized] = useState<boolean>(false);
 
-  // Sync state to localStorage on changes
+  // Ref to track if a portfolio fetch is in flight (prevent duplicate calls)
+  const portfolioFetchRef = useRef(false);
+
+  // ── Persist user profile to localStorage ──────────────────
   useEffect(() => {
     if (user) {
       localStorage.setItem("stockeasy_user", JSON.stringify(user));
@@ -113,134 +116,91 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
     localStorage.setItem("stockeasy_stocks", JSON.stringify(stocks));
   }, [stocks]);
 
-  useEffect(() => {
-    localStorage.setItem("stockeasy_holdings", JSON.stringify(holdings));
-  }, [holdings]);
+  // ─────────────────────────────────────────────────────────────
+  //  Portfolio fetcher — calls /api/dashboard with live prices
+  // ─────────────────────────────────────────────────────────────
+  const refreshPortfolio = useCallback(async () => {
+    const token = getToken();
+    if (!token || portfolioFetchRef.current) return;
 
-  useEffect(() => {
-    localStorage.setItem(
-      "stockeasy_transactions",
-      JSON.stringify(transactions),
-    );
-  }, [transactions]);
+    portfolioFetchRef.current = true;
+    setPortfolioLoading(true);
+    try {
+      // Build live price map from current stocks state
+      const livePrices: Record<string, number> = {};
+      setStocks(prev => {
+        prev.forEach(s => { livePrices[s.symbol] = s.price; });
+        return prev;
+      });
 
-  // Handle session detection and synchronization on boot
-  useEffect(() => {
-    const initAuth = async () => {
-      setAuthLoading(true);
-      try {
-        // 1. Check if there is an active Supabase session (Google Auth)
-        const { data: { session }, error } = await supabase.auth.getSession();
-        
-        if (error) {
-          console.error("Supabase getSession error:", error);
-        }
-        
-        if (session) {
-          // Sync session with the backend using POST /auth/google
-          const res = await fetch("/auth/google", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({ accessToken: session.access_token }),
-          });
-          
-          if (res.ok) {
-            const result = await res.json();
-            if (result.success && result.data) {
-              localStorage.setItem("trado_token", result.data.token);
-              const finalUser = {
-                name: result.data.user.name,
-                email: result.data.user.email,
-                walletBalance: result.data.user.walletBalance,
-                initialBalance: result.data.user.initialBalance,
-                onboardingCompleted: result.data.user.onboardingCompleted,
-                googlePicture: result.data.user.googlePicture,
-              };
-              setUser(finalUser);
-              
-              // Clean up the URL hash
-              if (window.history.replaceState) {
-                window.history.replaceState(null, "", window.location.pathname + window.location.search);
-              }
-              
-              setActiveView(result.redirectTo === "/dashboard" ? "dashboard" : "onboarding");
-              setIsAuthInitialized(true);
-              setAuthLoading(false);
-              return;
-            }
-          }
-        }
+      const pricesParam = encodeURIComponent(JSON.stringify(livePrices));
+      const res = await fetch(`/api/dashboard?prices=${pricesParam}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
 
-        // 2. If no Supabase session, check trado_token
-        const localToken = localStorage.getItem("trado_token");
-        if (localToken) {
-          const res = await fetch("/auth/me", {
-            headers: {
-              "Authorization": `Bearer ${localToken}`,
-            },
-          });
-          if (res.ok) {
-            const result = await res.json();
-            if (result.success && result.data?.user) {
-              const finalUser = {
-                name: result.data.user.name,
-                email: result.data.user.email,
-                walletBalance: result.data.user.walletBalance,
-                initialBalance: result.data.user.initialBalance,
-                onboardingCompleted: result.data.user.onboardingCompleted,
-                googlePicture: result.data.user.googlePicture,
-              };
-              setUser(finalUser);
-              setActiveView(finalUser.onboardingCompleted ? "dashboard" : "onboarding");
-              setIsAuthInitialized(true);
-              setAuthLoading(false);
-              return;
-            }
-          }
-          // If token verification fails, clear session details
-          localStorage.removeItem("trado_token");
-          setUser(null);
-          setActiveView("landing");
-        } else {
-          // No session and no local token
-          const path = window.location.pathname;
-          if (path === '/register') setActiveView('register');
-          else if (path === '/login') setActiveView('signin');
-          else setActiveView('landing');
-        }
-      } catch (err) {
-        console.error("Initialization of authentication failed:", err);
-      } finally {
-        setAuthLoading(false);
-        setIsAuthInitialized(true);
+      if (!res.ok) {
+        console.warn("[Portfolio] Failed to fetch dashboard:", res.status);
+        return;
       }
-    };
 
-    // Listen for auth state changes which trigger on startup automatically (INITIAL_SESSION)
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (session) {
-        initAuth();
-      } else if (event === 'SIGNED_OUT') {
-        setUser(null);
-        localStorage.removeItem("trado_token");
-        setActiveView("landing");
-        setIsAuthInitialized(true);
-        setAuthLoading(false);
-      } else if (event === 'INITIAL_SESSION' && !session) {
-        // Handle startup when no active Supabase session exists
-        initAuth();
+      const result = await res.json();
+      if (result.success && result.data) {
+        const { wallet, holdings: h, transactions: t } = result.data;
+
+        // Update grouped holdings with live prices from current stocks
+        const enriched: GroupedHolding[] = (h as GroupedHolding[]).map(g => {
+          const livePrice = livePrices[g.symbol] ?? g.currentPrice;
+          const currentValue = Math.round(g.totalQuantity * livePrice * 100) / 100;
+          const profitLoss = Math.round((currentValue - g.totalCost) * 100) / 100;
+          const profitLossPercentage = g.totalCost > 0
+            ? Math.round((profitLoss / g.totalCost) * 10000) / 100
+            : 0;
+          return {
+            ...g,
+            currentPrice: livePrice,
+            currentValue,
+            profitLoss,
+            profitLossPercentage,
+            purchases: g.purchases.map(p => ({
+              ...p,
+              currentValue: Math.round(p.quantity * livePrice * 100) / 100,
+              profitLoss: Math.round(p.quantity * (livePrice - p.buyPrice) * 100) / 100,
+            })),
+          };
+        });
+
+        const mappedTransactions: Transaction[] = (t || []).map((tx: any) => ({
+          id: tx.id,
+          type: tx.type,
+          stockId: tx.symbol,
+          symbol: tx.symbol,
+          name: tx.company_name,
+          quantity: tx.quantity,
+          price: Number(tx.price),
+          totalAmount: Number(tx.total_amount),
+          remainingBalance: 0,
+          timestamp: tx.transaction_time || tx.created_at,
+        }));
+
+        setHoldings(enriched);
+        setTransactions(mappedTransactions);
+
+        // Sync wallet balance into user state
+        if (wallet) {
+          setUser(prev => prev ? { ...prev, walletBalance: wallet.available_cash } : prev);
+        }
       }
-    });
- 
-    return () => {
-      subscription.unsubscribe();
-    };
+    } catch (err) {
+      console.error("[Portfolio] refreshPortfolio error:", err);
+    } finally {
+      portfolioFetchRef.current = false;
+      setPortfolioLoading(false);
+    }
   }, []);
 
-  // Simulate Stock Market Ticks (Price fluctuations)
-  // Fetch Real Stock Market Data (NSE Nifty 25) via Yahoo Finance every 30 seconds
+  // ─────────────────────────────────────────────────────────────
+  //  Live stocks — fetch from market API every 30 seconds
+  // ─────────────────────────────────────────────────────────────
   useEffect(() => {
     const loadStocks = async () => {
       try {
@@ -252,78 +212,179 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
           symbol: stock.symbol.replace(".NS", ""),
           name: stock.name,
           price: stock.price,
-          change:
-            ((stock.price - stock.previousClose) / stock.previousClose) * 100,
+          change: ((stock.price - stock.previousClose) / stock.previousClose) * 100,
           high: stock.high,
           low: stock.low,
           volume: stock.volume,
-
           marketCap: "-",
           peRatio: "-",
           high52: stock.high,
           low52: stock.low,
           sector: "NSE",
           description: stock.name,
-
           history: [stock.low, stock.previousClose, stock.price, stock.high],
         }));
 
         setStocks(formattedStocks);
       } catch (err) {
-        console.error(err);
+        console.error("[Stocks] Failed to load:", err);
       }
     };
 
     loadStocks();
-    const interval = setInterval(loadStocks, 30000); // 30 seconds update interval
-
+    const interval = setInterval(loadStocks, 30000);
     return () => clearInterval(interval);
   }, []);
 
-  // Recalculate Portfolio Holdings whenever stocks update
+  // ── When stocks update, refresh portfolio P/L in-place (no round-trip) ──
   useEffect(() => {
     if (holdings.length === 0) return;
+    setHoldings(prev => {
+      const livePrices: Record<string, number> = {};
+      stocks.forEach(s => { livePrices[s.symbol] = s.price; });
 
-    setHoldings((prevHoldings) => {
-      let updated = false;
-      const newHoldings = prevHoldings.map((holding) => {
-        const liveStock = stocks.find((s) => s.id === holding.stockId);
-        if (!liveStock) return holding;
+      return prev.map(g => {
+        const livePrice = livePrices[g.symbol] ?? g.currentPrice;
+        if (livePrice === g.currentPrice) return g;
 
-        const currentPrice = liveStock.price;
-        const currentValue = Math.round(holding.quantity * currentPrice * 100) / 100;
-        const profitLoss = Math.round((currentValue - holding.totalCost) * 100) / 100;
-        const profitLossPercentage = holding.totalCost > 0
-            ? Math.round((profitLoss / holding.totalCost) * 10000) / 100
-            : 0;
-
-        if (holding.currentPrice !== currentPrice) {
-          updated = true;
-          return {
-            ...holding,
-            currentPrice,
-            currentValue,
-            profitLoss,
-            profitLossPercentage,
-          };
-        }
-        return holding;
+        const currentValue = Math.round(g.totalQuantity * livePrice * 100) / 100;
+        const profitLoss = Math.round((currentValue - g.totalCost) * 100) / 100;
+        const profitLossPercentage = g.totalCost > 0
+          ? Math.round((profitLoss / g.totalCost) * 10000) / 100
+          : 0;
+        return {
+          ...g,
+          currentPrice: livePrice,
+          currentValue,
+          profitLoss,
+          profitLossPercentage,
+          purchases: g.purchases.map(p => ({
+            ...p,
+            currentValue: Math.round(p.quantity * livePrice * 100) / 100,
+            profitLoss: Math.round(p.quantity * (livePrice - p.buyPrice) * 100) / 100,
+          })),
+        };
       });
-
-      return updated ? newHoldings : prevHoldings;
     });
   }, [stocks]);
 
-  // Auth Functions
+  // ─────────────────────────────────────────────────────────────
+  //  Auth initialization
+  // ─────────────────────────────────────────────────────────────
+  useEffect(() => {
+    const initAuth = async () => {
+      setAuthLoading(true);
+      try {
+        // 1. Check if there is an active Supabase session (Google Auth)
+        const { data: { session }, error } = await supabase.auth.getSession();
+        if (error) console.error("Supabase getSession error:", error);
+
+        if (session) {
+          const res = await fetch("/auth/google", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ accessToken: session.access_token }),
+          });
+
+          if (res.ok) {
+            const result = await res.json();
+            if (result.success && result.data) {
+              localStorage.setItem("trado_token", result.data.token);
+              const finalUser: UserProfile = {
+                name: result.data.user.name,
+                email: result.data.user.email,
+                walletBalance: result.data.user.walletBalance,
+                initialBalance: result.data.user.initialBalance,
+                onboardingCompleted: result.data.user.onboardingCompleted,
+                googlePicture: result.data.user.googlePicture,
+              };
+              setUser(finalUser);
+              if (window.history.replaceState) {
+                window.history.replaceState(null, "", window.location.pathname + window.location.search);
+              }
+              setActiveView(result.redirectTo === "/dashboard" ? "dashboard" : "onboarding");
+              setIsAuthInitialized(true);
+              setAuthLoading(false);
+              // Restore portfolio from DB
+              await refreshPortfolio();
+              return;
+            }
+          }
+        }
+
+        // 2. No Supabase session — check trado_token
+        const localToken = localStorage.getItem("trado_token");
+        if (localToken) {
+          const res = await fetch("/auth/me", {
+            headers: { Authorization: `Bearer ${localToken}` },
+          });
+          if (res.ok) {
+            const result = await res.json();
+            if (result.success && result.data?.user) {
+              const finalUser: UserProfile = {
+                name: result.data.user.name,
+                email: result.data.user.email,
+                walletBalance: result.data.user.walletBalance,
+                initialBalance: result.data.user.initialBalance,
+                onboardingCompleted: result.data.user.onboardingCompleted,
+                googlePicture: result.data.user.googlePicture,
+              };
+              setUser(finalUser);
+              setActiveView(finalUser.onboardingCompleted ? "dashboard" : "onboarding");
+              setIsAuthInitialized(true);
+              setAuthLoading(false);
+              // Restore portfolio from DB
+              await refreshPortfolio();
+              return;
+            }
+          }
+          // Token invalid — clear session
+          localStorage.removeItem("trado_token");
+          setUser(null);
+          setHoldings([]);
+          setTransactions([]);
+          setActiveView("landing");
+        } else {
+          const path = window.location.pathname;
+          if (path === "/register") setActiveView("register");
+          else if (path === "/login") setActiveView("signin");
+          else setActiveView("landing");
+        }
+      } catch (err) {
+        console.error("Initialization of authentication failed:", err);
+      } finally {
+        setAuthLoading(false);
+        setIsAuthInitialized(true);
+      }
+    };
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (session) {
+        initAuth();
+      } else if (event === "SIGNED_OUT") {
+        setUser(null);
+        setHoldings([]);
+        setTransactions([]);
+        localStorage.removeItem("trado_token");
+        setActiveView("landing");
+        setIsAuthInitialized(true);
+        setAuthLoading(false);
+      } else if (event === "INITIAL_SESSION" && !session) {
+        initAuth();
+      }
+    });
+
+    return () => { subscription.unsubscribe(); };
+  }, []);
+
+  // ─────────────────────────────────────────────────────────────
+  //  Auth Functions
+  // ─────────────────────────────────────────────────────────────
   const registerUser = (name: string, email: string) => {
     setIsLoading(true);
     setTimeout(() => {
       const newUser: UserProfile = {
-        name,
-        email,
-        walletBalance: 1000000,
-        initialBalance: 1000000,
-        onboardingCompleted: false,
+        name, email, walletBalance: 1000000, initialBalance: 1000000, onboardingCompleted: false,
       };
       setUser(newUser);
       setActiveView("onboarding");
@@ -348,10 +409,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
     setTimeout(() => {
       const autoUser: UserProfile = {
         name: email.split("@")[0].toUpperCase(),
-        email,
-        walletBalance: 1000000,
-        initialBalance: 1000000,
-        onboardingCompleted: false,
+        email, walletBalance: 1000000, initialBalance: 1000000, onboardingCompleted: false,
       };
       setUser(autoUser);
       setActiveView("onboarding");
@@ -363,12 +421,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
   const loginWithGoogleUser = (name: string, email: string, picture?: string) => {
     setIsLoading(true);
     const finalUser: UserProfile = {
-      name,
-      email,
-      walletBalance: 1000000,
-      initialBalance: 1000000,
-      onboardingCompleted: false,
-      googlePicture: picture,
+      name, email, walletBalance: 1000000, initialBalance: 1000000, onboardingCompleted: false, googlePicture: picture,
     };
     setUser(finalUser);
     setActiveView("onboarding");
@@ -386,19 +439,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
     };
     setUser(finalUser);
     setActiveView(userData.onboardingCompleted ? "dashboard" : "onboarding");
+    // Restore portfolio from DB after login
+    setTimeout(() => refreshPortfolio(), 100);
   };
 
   const completeOnboarding = async (prefs: OnboardingPreferences) => {
     if (!user) return;
     try {
-      const token = localStorage.getItem("trado_token");
+      const token = getToken();
       const res = await fetch("/onboarding", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${token}`
-        },
-        body: JSON.stringify(prefs)
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify(prefs),
       });
       if (res.ok) {
         const updatedUser = { ...user, onboardingCompleted: true };
@@ -407,72 +459,118 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
       }
     } catch (e) {
       console.error("Onboarding failed:", e);
-      // Fallback for demo
       const updatedUser = { ...user, onboardingCompleted: true };
       setUser(updatedUser);
       setActiveView("dashboard");
     }
   };
 
-  const buyStock = (stockId: string, quantity: number) => {
+  // ─────────────────────────────────────────────────────────────
+  //  Buy Stock — calls POST /api/buy (Supabase-backed)
+  // ─────────────────────────────────────────────────────────────
+  const buyStock = async (stockId: string, quantity: number): Promise<{ success: boolean; message: string }> => {
     if (!user) return { success: false, message: "Please sign in." };
-    const stock = stocks.find((s) => s.id === stockId);
+    const token = getToken();
+    if (!token) return { success: false, message: "Authentication required." };
+
+    const stock = stocks.find(s => s.id === stockId);
     if (!stock) return { success: false, message: "Stock not found." };
-    const totalCost = Math.round(stock.price * quantity * 100) / 100;
-    if (user.walletBalance < totalCost) return { success: false, message: "Insufficient balance." };
 
-    const newBalance = Math.round((user.walletBalance - totalCost) * 100) / 100;
-    setUser({ ...user, walletBalance: newBalance });
+    const livePrice = stock.price;
+    const totalCost = Math.round(quantity * livePrice * 100) / 100;
 
-    let updatedHoldings = [...holdings];
-    const existingIdx = updatedHoldings.findIndex((h) => h.stockId === stockId);
-    if (existingIdx >= 0) {
-      const h = updatedHoldings[existingIdx];
-      const newQty = h.quantity + quantity;
-      const newCost = h.totalCost + totalCost;
-      updatedHoldings[existingIdx] = { ...h, quantity: newQty, totalCost: newCost, avgPrice: newCost / newQty };
-    } else {
-      updatedHoldings.push({ stockId, symbol: stock.symbol, name: stock.name, quantity, totalCost, avgPrice: stock.price, currentPrice: stock.price, currentValue: totalCost, profitLoss: 0, profitLossPercentage: 0 });
+    if (user.walletBalance < totalCost) {
+      return { success: false, message: `Insufficient balance. Need ₹${totalCost.toLocaleString()}.` };
     }
-    setHoldings(updatedHoldings);
 
-    const tx: Transaction = { id: Math.random().toString(36).substr(2, 9), type: "BUY", stockId, symbol: stock.symbol, name: stock.name, quantity, price: stock.price, totalAmount: totalCost, remainingBalance: newBalance, timestamp: new Date().toISOString() };
-    setTransactions([tx, ...transactions]);
-    return { success: true, message: `Bought ${quantity} shares of ${stock.symbol}` };
+    try {
+      const res = await fetch("/api/buy", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          symbol: stock.symbol,
+          companyName: stock.name,
+          exchange: "NSE",
+          quantity,
+          livePrice,
+        }),
+      });
+
+      const result = await res.json();
+      if (!res.ok || !result.success) {
+        return { success: false, message: result.message || "Buy failed." };
+      }
+
+      // Update wallet balance immediately in UI
+      setUser(prev => prev ? { ...prev, walletBalance: result.data.available_cash } : prev);
+
+      // Refresh full portfolio from DB
+      await refreshPortfolio();
+
+      return { success: true, message: result.message };
+    } catch (err: any) {
+      console.error("[Buy] Error:", err);
+      return { success: false, message: "Network error. Please try again." };
+    }
   };
 
-  const sellStock = (stockId: string, quantity: number) => {
+  // ─────────────────────────────────────────────────────────────
+  //  Sell Stock — calls POST /api/sell (Supabase-backed, FIFO)
+  // ─────────────────────────────────────────────────────────────
+  const sellStock = async (stockId: string, quantity: number): Promise<{ success: boolean; message: string }> => {
     if (!user) return { success: false, message: "Please sign in." };
-    const stock = stocks.find((s) => s.id === stockId);
-    const hIdx = holdings.findIndex((h) => h.stockId === stockId);
-    if (hIdx < 0 || holdings[hIdx].quantity < quantity) return { success: false, message: "Insufficient shares." };
+    const token = getToken();
+    if (!token) return { success: false, message: "Authentication required." };
 
-    const revenue = Math.round(stock!.price * quantity * 100) / 100;
-    const newBalance = Math.round((user.walletBalance + revenue) * 100) / 100;
-    setUser({ ...user, walletBalance: newBalance });
+    // stockId may be the NSE symbol (e.g. "RELIANCE.NS") or bare symbol ("RELIANCE")
+    const stock = stocks.find(s => s.id === stockId);
+    if (!stock) return { success: false, message: "Stock not found." };
 
-    let updatedHoldings = [...holdings];
-    if (updatedHoldings[hIdx].quantity === quantity) {
-      updatedHoldings.splice(hIdx, 1);
-    } else {
-      const h = updatedHoldings[hIdx];
-      const newQty = h.quantity - quantity;
-      const reduction = h.totalCost * (quantity / h.quantity);
-      updatedHoldings[hIdx] = { ...h, quantity: newQty, totalCost: h.totalCost - reduction };
+    // Check total available quantity from grouped holdings
+    const holding = holdings.find(h => h.symbol === stock.symbol);
+    if (!holding || holding.totalQuantity < quantity) {
+      return { success: false, message: `Insufficient shares. Available: ${holding?.totalQuantity ?? 0}.` };
     }
-    setHoldings(updatedHoldings);
 
-    const tx: Transaction = { id: Math.random().toString(36).substr(2, 9), type: "SELL", stockId, symbol: stock!.symbol, name: stock!.name, quantity, price: stock!.price, totalAmount: revenue, remainingBalance: newBalance, timestamp: new Date().toISOString() };
-    setTransactions([tx, ...transactions]);
-    return { success: true, message: `Sold ${quantity} shares of ${stock!.symbol}` };
+    try {
+      const res = await fetch("/api/sell", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          symbol: stock.symbol,
+          quantity,
+          livePrice: stock.price,
+        }),
+      });
+
+      const result = await res.json();
+      if (!res.ok || !result.success) {
+        return { success: false, message: result.message || "Sell failed." };
+      }
+
+      // Update wallet balance immediately in UI
+      setUser(prev => prev ? { ...prev, walletBalance: result.data.available_cash } : prev);
+
+      // Refresh full portfolio from DB
+      await refreshPortfolio();
+
+      return { success: true, message: result.message };
+    } catch (err: any) {
+      console.error("[Sell] Error:", err);
+      return { success: false, message: "Network error. Please try again." };
+    }
   };
 
+  // ─────────────────────────────────────────────────────────────
+  //  Logout
+  // ─────────────────────────────────────────────────────────────
   const logout = async () => {
     try {
-      const token = localStorage.getItem("trado_token");
-      if (token) await fetch("/auth/logout", { method: "POST", headers: { "Authorization": `Bearer ${token}` } });
+      const token = getToken();
+      if (token) await fetch("/auth/logout", { method: "POST", headers: { Authorization: `Bearer ${token}` } });
       await supabase.auth.signOut();
     } catch {}
+    // Clear local state only — DB data persists for next login
     localStorage.removeItem("trado_token");
     localStorage.removeItem("stockeasy_user");
     setUser(null);
@@ -488,8 +586,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
     setTransactions([]);
     setStocks(INITIAL_STOCKS);
     localStorage.removeItem("stockeasy_stocks");
-    localStorage.removeItem("stockeasy_holdings");
-    localStorage.removeItem("stockeasy_transactions");
   };
 
   const addMoney = (amount: number) => setUser(prev => prev ? { ...prev, walletBalance: prev.walletBalance + amount } : null);
@@ -498,10 +594,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
   return (
     <AppContext.Provider
       value={{
-        user, stocks, holdings, transactions, isLoading, authLoading, isAuthInitialized, activeView,
-        selectedStockId, registerUser, loginUser, loginWithGoogleUser, loginUserFromResponse,
-        completeOnboarding, buyStock, sellStock, logout, resetAllData, addMoney, resetMoney,
-        setActiveView, setSelectedStockId,
+        user, stocks, holdings, transactions,
+        isLoading, authLoading, isAuthInitialized, activeView,
+        selectedStockId, portfolioLoading,
+        registerUser, loginUser, loginWithGoogleUser, loginUserFromResponse,
+        completeOnboarding, buyStock, sellStock, logout, resetAllData,
+        addMoney, resetMoney, setActiveView, setSelectedStockId,
+        refreshPortfolio,
       }}
     >
       {children}

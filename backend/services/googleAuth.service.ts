@@ -1,4 +1,5 @@
 import { supabase } from '../config/supabase';
+import { getOrCreateWallet } from './portfolio.service';
  
 export interface GoogleSyncResult {
   success: boolean;
@@ -199,6 +200,9 @@ export class GoogleAuthService {
       }
     }
  
+    // Ensure wallet exists for this user (idempotent — creates ₹10L on first Google login)
+    const wallet = await getOrCreateWallet(finalUserId);
+
     return {
       success: true,
       redirectTo: profileCompleted ? '/dashboard' : '/onboarding',
@@ -208,7 +212,7 @@ export class GoogleAuthService {
         email,
         googlePicture: avatarUrl,
         onboardingCompleted: profileCompleted,
-        walletBalance: 1000000,
+        walletBalance: wallet.available_cash,
         initialBalance: 1000000
       }
     };

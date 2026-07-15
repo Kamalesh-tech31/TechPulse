@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useApp } from '../AppContext';
 import { 
   Coins, 
@@ -8,7 +8,9 @@ import {
   TrendingUp,
   Percent,
   Wallet,
-  Activity
+  Activity,
+  ChevronDown,
+  ChevronUp
 } from 'lucide-react';
 import { 
   ResponsiveContainer, 
@@ -31,6 +33,15 @@ export const TradingSimulatorView: React.FC = () => {
     setActiveView, 
     setSelectedStockId 
   } = useApp();
+
+  const [expandedCompanies, setExpandedCompanies] = useState<Record<string, boolean>>({});
+
+  const toggleExpand = (symbol: string) => {
+    setExpandedCompanies(prev => ({
+      ...prev,
+      [symbol]: !prev[symbol]
+    }));
+  };
 
   if (!user) return null;
 
@@ -65,8 +76,8 @@ export const TradingSimulatorView: React.FC = () => {
   // Chart 2: Sector Distribution
   const sectorDataMap: { [key: string]: number } = {};
   holdings.forEach((h) => {
-    const liveStock = stocks.find((s) => s.id === h.stockId);
-    const sector = liveStock?.sector || 'Unassigned';
+    const liveStock = stocks.find((s) => s.symbol === h.symbol);
+    const sector = liveStock?.sector || h.sector || 'NSE';
     sectorDataMap[sector] = (sectorDataMap[sector] || 0) + h.currentValue;
   });
 
@@ -184,12 +195,12 @@ export const TradingSimulatorView: React.FC = () => {
                 <thead>
                   <tr className="border-b border-white/[0.04] text-[10px] font-mono text-gray-500 uppercase tracking-wider pb-2">
                     <th className="py-3.5">Company Symbol</th>
-                    <th className="py-3.5 text-right">Qty</th>
-                    <th className="py-3.5 text-right">Avg Cost Price</th>
+                    <th className="py-3.5 text-right">Total Shares</th>
+                    <th className="py-3.5 text-right">Avg Cost (Weighted)</th>
                     <th className="py-3.5 text-right">Current Price</th>
                     <th className="py-3.5 text-right">Total Net Cost</th>
-                    <th className="py-3.5 text-right">Live Asset Value</th>
-                    <th className="py-3.5 text-right">P&L Gain/Loss</th>
+                    <th className="py-3.5 text-right">Current Market Value</th>
+                    <th className="py-3.5 text-right">Total Profit/Loss</th>
                     <th className="py-3.5 text-right">Percentage ROI</th>
                     <th className="py-3.5 text-center">Trigger Actions</th>
                   </tr>
@@ -197,76 +208,132 @@ export const TradingSimulatorView: React.FC = () => {
                 <tbody className="divide-y divide-white/[0.03] text-xs font-mono">
                   {holdings.map((h) => {
                     const isProfit = h.profitLoss >= 0;
+                    const isExpanded = !!expandedCompanies[h.symbol];
+                    const stock = stocks.find(s => s.symbol === h.symbol);
+                    const stockId = stock ? stock.id : h.symbol;
+                    
                     return (
-                      <tr 
-                        key={h.stockId}
-                        className="hover:bg-white/[0.005] transition"
-                      >
-                        {/* Name & Symbol */}
-                        <td className="py-3.5 flex items-center gap-3">
-                          <div className="h-7 w-7 rounded bg-white/[0.02] border border-white/[0.05] flex items-center justify-center font-sans font-bold text-white uppercase text-[10px]">
-                            {h.symbol.slice(0, 2)}
-                          </div>
-                          <div>
-                            <span className="font-sans font-semibold text-white block">{h.symbol}</span>
-                            <span className="text-[9px] text-gray-500 font-sans truncate max-w-[130px] block mt-0.5">{h.name}</span>
-                          </div>
-                        </td>
+                      <React.Fragment key={h.symbol}>
+                        {/* Parent Group Row */}
+                        <tr 
+                          className="hover:bg-white/[0.005] transition cursor-pointer"
+                          onClick={() => toggleExpand(h.symbol)}
+                        >
+                          {/* Name & Symbol */}
+                          <td className="py-3.5 flex items-center gap-3">
+                            <div className="text-gray-400 shrink-0">
+                              {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                            </div>
+                            <div className="h-7 w-7 rounded bg-white/[0.02] border border-white/[0.05] flex items-center justify-center font-sans font-bold text-white uppercase text-[10px]">
+                              {h.symbol.slice(0, 2)}
+                            </div>
+                            <div>
+                              <span className="font-sans font-semibold text-white block">{h.symbol}</span>
+                              <span className="text-[9px] text-gray-500 font-sans truncate max-w-[130px] block mt-0.5">{h.name}</span>
+                            </div>
+                          </td>
 
-                        {/* Quantity */}
-                        <td className="py-3.5 text-right text-white font-medium">
-                          {h.quantity}
-                        </td>
+                          {/* Quantity */}
+                          <td className="py-3.5 text-right text-white font-medium">
+                            {h.totalQuantity}
+                          </td>
 
-                        {/* Average Buy Price */}
-                        <td className="py-3.5 text-right text-gray-400">
-                          ₹{h.avgPrice.toFixed(2)}
-                        </td>
+                          {/* Average Buy Price */}
+                          <td className="py-3.5 text-right text-gray-400">
+                            ₹{h.avgBuyPrice.toFixed(2)}
+                          </td>
 
-                        {/* Live Market Price */}
-                        <td className="py-3.5 text-right text-white">
-                          ₹{h.currentPrice.toFixed(2)}
-                        </td>
+                          {/* Live Market Price */}
+                          <td className="py-3.5 text-right text-white">
+                            ₹{h.currentPrice.toFixed(2)}
+                          </td>
 
-                        {/* Net cost */}
-                        <td className="py-3.5 text-right text-gray-400">
-                          ₹{h.totalCost.toLocaleString(undefined, { maximumFractionDigits: 1 })}
-                        </td>
+                          {/* Net cost */}
+                          <td className="py-3.5 text-right text-gray-400">
+                            ₹{h.totalCost.toLocaleString(undefined, { maximumFractionDigits: 1 })}
+                          </td>
 
-                        {/* Current Value */}
-                        <td className="py-3.5 text-right text-white font-bold">
-                          ₹{h.currentValue.toLocaleString(undefined, { maximumFractionDigits: 1 })}
-                        </td>
+                          {/* Current Value */}
+                          <td className="py-3.5 text-right text-white font-bold">
+                            ₹{h.currentValue.toLocaleString(undefined, { maximumFractionDigits: 1 })}
+                          </td>
 
-                        {/* P&L */}
-                        <td className={`py-3.5 text-right font-bold ${isProfit ? 'text-emerald-400' : 'text-rose-400'}`}>
-                          {isProfit ? '+' : ''}₹{h.profitLoss.toLocaleString(undefined, { maximumFractionDigits: 2 })}
-                        </td>
+                          {/* P&L */}
+                          <td className={`py-3.5 text-right font-bold ${isProfit ? 'text-emerald-400' : 'text-rose-400'}`}>
+                            {isProfit ? '+' : ''}₹{h.profitLoss.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                          </td>
 
-                        {/* Return Percentage */}
-                        <td className={`py-3.5 text-right font-bold ${isProfit ? 'text-emerald-400' : 'text-rose-400'}`}>
-                          <div className="flex items-center justify-end gap-0.5">
-                            {isProfit ? <ArrowUpRight className="h-3 w-3" /> : <ArrowDownRight className="h-3 w-3" />}
-                            <span>{isProfit ? '+' : ''}{h.profitLossPercentage.toFixed(2)}%</span>
-                          </div>
-                        </td>
+                          {/* Return Percentage */}
+                          <td className={`py-3.5 text-right font-bold ${isProfit ? 'text-emerald-400' : 'text-rose-400'}`}>
+                            <div className="flex items-center justify-end gap-0.5">
+                              {isProfit ? <ArrowUpRight className="h-3 w-3" /> : <ArrowDownRight className="h-3 w-3" />}
+                              <span>{isProfit ? '+' : ''}{h.profitLossPercentage.toFixed(2)}%</span>
+                            </div>
+                          </td>
 
-                        {/* Sell Button */}
-                        <td className="py-3.5 text-center">
-                          <button
-                            onClick={() => {
-                              setSelectedStockId(h.stockId);
-                              setActiveView('stock-detail');
-                            }}
-                            className="px-3.5 py-1.5 text-[11px] font-sans font-semibold text-white rounded-lg cursor-pointer transition hover:scale-[1.03] active:scale-[0.97]"
-                            style={{ background: 'var(--color-trado-accent)', boxShadow: '0 0 10px rgba(79, 107, 255, 0.2)' }}
-                            onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = 'var(--color-trado-accent-dark)'; }}
-                            onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = 'var(--color-trado-accent)'; }}
-                          >
-                            Sell Stock
-                          </button>
-                        </td>
-                      </tr>
+                          {/* Sell Button */}
+                          <td className="py-3.5 text-center" onClick={(e) => e.stopPropagation()}>
+                            <button
+                              onClick={() => {
+                                setSelectedStockId(stockId);
+                                setActiveView('stock-detail');
+                              }}
+                              className="px-3.5 py-1.5 text-[11px] font-sans font-semibold text-white rounded-lg cursor-pointer transition hover:scale-[1.03] active:scale-[0.97]"
+                              style={{ background: 'var(--color-trado-accent)', boxShadow: '0 0 10px rgba(79, 107, 255, 0.2)' }}
+                              onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = 'var(--color-trado-accent-dark)'; }}
+                              onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = 'var(--color-trado-accent)'; }}
+                            >
+                              Sell Stock
+                            </button>
+                          </td>
+                        </tr>
+
+                        {/* Child Expanded Rows */}
+                        {isExpanded && (
+                          <tr>
+                            <td colSpan={9} className="bg-white/[0.01] px-6 py-4 border-l-2 border-trado-accent">
+                              <div className="space-y-3">
+                                <div className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-2">Individual Purchases Breakdown</div>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                                  {h.purchases.map((purchase, index) => {
+                                    const pProfit = purchase.profitLoss >= 0;
+                                    return (
+                                      <div key={purchase.id} className="p-3 rounded-xl bg-[#09090b] border border-white/[0.04] text-xs space-y-2">
+                                        <div className="flex justify-between font-bold border-b border-white/[0.04] pb-1.5">
+                                          <span className="text-gray-400">Purchase #{index + 1}</span>
+                                          <span className="text-white">{purchase.quantity} Shares</span>
+                                        </div>
+                                        <div className="flex justify-between">
+                                          <span className="text-gray-500">Bought Price:</span>
+                                          <span className="text-gray-300 font-bold">₹{purchase.buyPrice.toFixed(2)}</span>
+                                        </div>
+                                        <div className="flex justify-between">
+                                          <span className="text-gray-500">Bought On:</span>
+                                          <span className="text-gray-300">{new Date(purchase.buyTime).toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: 'numeric' })}</span>
+                                        </div>
+                                        <div className="flex justify-between">
+                                          <span className="text-gray-500">Investment:</span>
+                                          <span className="text-gray-300">₹{purchase.investment.toLocaleString()}</span>
+                                        </div>
+                                        <div className="flex justify-between">
+                                          <span className="text-gray-500">Current Value:</span>
+                                          <span className="text-white font-bold">₹{purchase.currentValue.toLocaleString()}</span>
+                                        </div>
+                                        <div className="flex justify-between border-t border-white/[0.04] pt-1.5 font-bold">
+                                          <span className="text-gray-400">Current Profit:</span>
+                                          <span className={pProfit ? 'text-emerald-400' : 'text-rose-400'}>
+                                            {pProfit ? '+' : ''}₹{purchase.profitLoss.toLocaleString()}
+                                          </span>
+                                        </div>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                      </React.Fragment>
                     );
                   })}
                 </tbody>
@@ -277,10 +344,17 @@ export const TradingSimulatorView: React.FC = () => {
             <div className="block md:hidden divide-y divide-white/[0.03]">
               {holdings.map((h) => {
                 const isProfit = h.profitLoss >= 0;
+                const isExpanded = !!expandedCompanies[h.symbol];
+                const stock = stocks.find(s => s.symbol === h.symbol);
+                const stockId = stock ? stock.id : h.symbol;
+                
                 return (
-                  <div key={h.stockId} className="py-4 space-y-3">
+                  <div key={h.symbol} className="py-4 space-y-3 cursor-pointer" onClick={() => toggleExpand(h.symbol)}>
                     <div className="flex justify-between items-start">
                       <div className="flex items-center gap-2.5">
+                        <div className="text-gray-400">
+                          {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                        </div>
                         <div className="h-7 w-7 rounded bg-white/[0.02] border border-white/[0.05] flex items-center justify-center font-sans font-bold text-white uppercase text-[10px]">
                           {h.symbol.slice(0, 2)}
                         </div>
@@ -299,12 +373,12 @@ export const TradingSimulatorView: React.FC = () => {
 
                     <div className="grid grid-cols-2 gap-y-2 gap-x-4 text-xs font-mono pt-2 border-t border-white/[0.02]">
                       <div className="flex justify-between">
-                        <span className="text-gray-500">Qty:</span>
-                        <span className="text-white font-medium">{h.quantity}</span>
+                        <span className="text-gray-500">Total Shares:</span>
+                        <span className="text-white font-medium">{h.totalQuantity}</span>
                       </div>
                       <div className="flex justify-between">
                         <span className="text-gray-500">Avg Cost:</span>
-                        <span className="text-gray-300">₹{h.avgPrice.toFixed(2)}</span>
+                        <span className="text-gray-300">₹{h.avgBuyPrice.toFixed(2)}</span>
                       </div>
                       <div className="flex justify-between">
                         <span className="text-gray-500">Live Price:</span>
@@ -318,7 +392,7 @@ export const TradingSimulatorView: React.FC = () => {
 
                     <div className="flex justify-between items-center pt-2 border-t border-white/[0.02] text-xs font-mono">
                       <div className="flex flex-col">
-                        <span className="text-[10px] text-gray-500 uppercase">P&L Gain/Loss</span>
+                        <span className="text-[10px] text-gray-500 uppercase">Total P&L</span>
                         <span className={`font-bold ${isProfit ? 'text-emerald-400' : 'text-rose-400'}`}>
                           {isProfit ? '+' : ''}₹{h.profitLoss.toLocaleString(undefined, { maximumFractionDigits: 2 })}
                         </span>
@@ -332,10 +406,46 @@ export const TradingSimulatorView: React.FC = () => {
                       </div>
                     </div>
 
-                    <div className="pt-2">
+                    {/* Child Expanded Rows for Mobile */}
+                    {isExpanded && (
+                      <div className="pt-3 border-t border-white/[0.03] space-y-2.5" onClick={(e) => e.stopPropagation()}>
+                        <div className="text-[9px] font-bold text-gray-500 uppercase tracking-widest mb-1.5">Purchase Batches</div>
+                        {h.purchases.map((purchase, index) => {
+                          const pProfit = purchase.profitLoss >= 0;
+                          return (
+                            <div key={purchase.id} className="p-3 rounded-xl bg-[#09090b] border border-white/[0.04] text-[11px] space-y-1.5">
+                              <div className="flex justify-between font-bold border-b border-white/[0.04] pb-1">
+                                <span className="text-gray-400">Batch #{index + 1}</span>
+                                <span className="text-white">{purchase.quantity} Shares</span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className="text-gray-500">Bought At:</span>
+                                <span className="text-gray-300">₹{purchase.buyPrice.toFixed(2)}</span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className="text-gray-500">Bought On:</span>
+                                <span className="text-gray-300">{new Date(purchase.buyTime).toLocaleDateString()}</span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className="text-gray-500">Investment:</span>
+                                <span className="text-gray-300">₹{purchase.investment.toLocaleString()}</span>
+                              </div>
+                              <div className="flex justify-between font-bold">
+                                <span className="text-gray-400">Profit/Loss:</span>
+                                <span className={pProfit ? 'text-emerald-400' : 'text-rose-400'}>
+                                  {pProfit ? '+' : ''}₹{purchase.profitLoss.toLocaleString()}
+                                </span>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+
+                    <div className="pt-2" onClick={(e) => e.stopPropagation()}>
                       <button
                         onClick={() => {
-                          setSelectedStockId(h.stockId);
+                          setSelectedStockId(stockId);
                           setActiveView('stock-detail');
                         }}
                         className="w-full py-2.5 text-xs font-sans font-semibold text-white rounded-xl cursor-pointer transition active:scale-[0.98]"

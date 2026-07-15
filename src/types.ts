@@ -16,19 +16,62 @@ export interface Stock {
   description: string;
 }
 
-export interface Holding {
-  stockId: string;
+/** A single purchase row from the DB `holdings` table */
+export interface HoldingRow {
+  id: string;
+  company_symbol: string;
+  company_name: string;
+  exchange: string;
+  quantity: number;
+  buy_price: number;
+  buy_time: string;
+  current_price?: number | null;
+  status: string;
+}
+
+/** A purchase entry for expandable display in the Holdings view */
+export interface PurchaseEntry {
+  id: string;
+  quantity: number;
+  buyPrice: number;
+  buyTime: string;
+  investment: number;
+  currentValue: number;
+  profitLoss: number;
+}
+
+/** Holdings grouped by company symbol, used for the Holdings page display */
+export interface GroupedHolding {
   symbol: string;
   name: string;
-  avgPrice: number;
-  quantity: number;
+  exchange: string;
+  sector: string;
+  totalQuantity: number;
   totalCost: number;
+  avgBuyPrice: number;
   currentPrice: number;
   currentValue: number;
   profitLoss: number;
   profitLossPercentage: number;
+  purchases: PurchaseEntry[];
 }
 
+/** Transaction as returned from the DB / API */
+export interface DbTransaction {
+  id: string;
+  user_id: string;
+  symbol: string;
+  company_name: string;
+  exchange: string;
+  type: 'BUY' | 'SELL';
+  quantity: number;
+  price: number;
+  total_amount: number;
+  transaction_time: string;
+  created_at: string;
+}
+
+/** Legacy local transaction type — kept for backward compat during UI render */
 export interface Transaction {
   id: string;
   type: 'BUY' | 'SELL';
@@ -40,6 +83,20 @@ export interface Transaction {
   totalAmount: number;
   remainingBalance: number;
   timestamp: string; // ISO String
+}
+
+/** Legacy local holding — kept for type safety in old code paths */
+export interface Holding {
+  stockId: string;
+  symbol: string;
+  name: string;
+  avgPrice: number;
+  quantity: number;
+  totalCost: number;
+  currentPrice: number;
+  currentValue: number;
+  profitLoss: number;
+  profitLossPercentage: number;
 }
 
 export interface OnboardingPreferences {

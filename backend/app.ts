@@ -5,6 +5,7 @@ import rateLimit from 'express-rate-limit';
 import authRoutes from './routes/auth.routes';
 import profileRoutes from './routes/profile.routes';
 import onboardingRoutes from './routes/onboarding.routes';
+import portfolioRoutes from './routes/portfolio.routes';
 
 const app = express();
 
@@ -34,5 +35,6 @@ const limiter = rateLimit({
 app.use('/auth', authRoutes);
 app.use('/profile', profileRoutes);
 app.use('/onboarding', onboardingRoutes);
+app.use('/api', portfolioRoutes);   // ← persistent portfolio endpoints
 
 export default app;

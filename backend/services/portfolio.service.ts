@@ -149,11 +149,14 @@ export async function getHoldingById(id: string, userId: string): Promise<Holdin
 export async function reduceHolding(holdingId: string, newQuantity: number): Promise<void> {
   if (newQuantity === 0) {
     const { error } = await supabase
-      .from('holdings')
-      .update({ quantity: 0, status: 'sold', updated_at: new Date().toISOString() })
-      .eq('id', holdingId);
-    if (error) throw new Error('Failed to close holding: ' + error.message);
-  } else {
+      .from("holdings")
+      .delete()
+      .eq("id", holdingId);
+  
+    if (error)
+      throw new Error("Failed to delete holding: " + error.message);
+  } 
+  else {
     const { error } = await supabase
       .from('holdings')
       .update({ quantity: newQuantity, updated_at: new Date().toISOString() })

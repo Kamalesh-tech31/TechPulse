@@ -21,6 +21,7 @@ export const PortfolioAnalyzerView: React.FC = () => {
   const { holdings, user } = useApp();
   const [analysis, setAnalysis] = useState<PortfolioAnalysis | null>(null);
   const [loading, setLoading] = useState(false);
+  const [activeIndex, setActiveIndex] = useState<number | null>(null);
   const [loadingStep, setLoadingStep] = useState(0);
 
   const runAnalysis = async () => {

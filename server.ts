@@ -15,6 +15,19 @@ const PORT = 3000;
 app.use(express.json());
 app.use(backendApp);
 
+
+app._router.stack.forEach((r: any) => {
+  if (r.route) {
+    console.log(Object.keys(r.route.methods), r.route.path);
+  } else if (r.name === "router") {
+    r.handle.stack.forEach((s: any) => {
+      if (s.route) {
+        console.log(Object.keys(s.route.methods), s.route.path);
+      }
+    });
+  }
+});
+
 // Initialize Gemini client lazily
 let aiClient: GoogleGenAI | null = null;
 function getGeminiClient(): GoogleGenAI | null {
@@ -655,8 +668,8 @@ app.get(['/auth/callback', '/auth/callback/'], async (req, res) => {
 // Lightweight wrapper to fetch stock data from stock-nse-india client.
 // The library exposes different method names across versions, so try common ones.
 
-
 app.get("/api/test-stock", async (req, res) => {
+
   try {
     const data = await getStock("RELIANCE.NS");
     res.json(data);

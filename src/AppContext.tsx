@@ -84,6 +84,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [portfolioLoading, setPortfolioLoading] = useState(false);
 
+  useEffect(() => {
+    console.log("HOLDINGS STATE CHANGED:", holdings);
+  }, [holdings]);
+
   // ── UI state ───────────────────────────────────────────────
   const [activeView, setActiveView] = useState<string>(() => {
     const saved = localStorage.getItem("stockeasy_user");
@@ -120,6 +124,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   //  Portfolio fetcher — calls /api/dashboard with live prices
   // ─────────────────────────────────────────────────────────────
   const refreshPortfolio = useCallback(async () => {
+    console.log("refreshPortfolio CALLED");
+
     const token = getToken();
     if (!token || portfolioFetchRef.current) return;
 
@@ -134,9 +140,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       });
 
       const pricesParam = encodeURIComponent(JSON.stringify(livePrices));
-      const res = await fetch(`/api/dashboard?prices=${pricesParam}`, {
+      const res = await fetch(`/portfolio/dashboard?prices=${pricesParam}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
+      console.log("Dashboard URL:", res.url);
+      console.log("Dashboard Status:", res.status);
 
       if (!res.ok) {
         console.warn("[Portfolio] Failed to fetch dashboard:", res.status);
@@ -144,30 +152,42 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
 
       const result = await res.json();
+
       if (result.success && result.data) {
         const { wallet, holdings: h, transactions: t } = result.data;
 
-        // Update grouped holdings with live prices from current stocks
-        const enriched: GroupedHolding[] = (h as GroupedHolding[]).map(g => {
+        // 👇 ADD THIS
+        console.log("About to map holdings...");
+
+        const enriched: GroupedHolding[] = (h as GroupedHolding[]).map((g) => {
           const livePrice = livePrices[g.symbol] ?? g.currentPrice;
-          const currentValue = Math.round(g.totalQuantity * livePrice * 100) / 100;
-          const profitLoss = Math.round((currentValue - g.totalCost) * 100) / 100;
-          const profitLossPercentage = g.totalCost > 0
-            ? Math.round((profitLoss / g.totalCost) * 10000) / 100
-            : 0;
+
+          const currentValue =
+            Math.round(g.totalQuantity * livePrice * 100) / 100;
+          const profitLoss =
+            Math.round((currentValue - g.totalCost) * 100) / 100;
+          const profitLossPercentage =
+            g.totalCost > 0
+              ? Math.round((profitLoss / g.totalCost) * 10000) / 100
+              : 0;
+
           return {
             ...g,
             currentPrice: livePrice,
             currentValue,
             profitLoss,
             profitLossPercentage,
-            purchases: g.purchases.map(p => ({
+            purchases: g.purchases.map((p) => ({
               ...p,
               currentValue: Math.round(p.quantity * livePrice * 100) / 100,
-              profitLoss: Math.round(p.quantity * (livePrice - p.buyPrice) * 100) / 100,
+              profitLoss:
+                Math.round(p.quantity * (livePrice - p.buyPrice) * 100) / 100,
             })),
           };
         });
+
+        // 👇 ADD THIS
+        console.log("ENRICHED =", enriched);
 
         const mappedTransactions: Transaction[] = (t || []).map((tx: any) => ({
           id: tx.id,
@@ -182,12 +202,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           timestamp: tx.transaction_time || tx.created_at,
         }));
 
+        // 👇 ADD THIS
+        console.log("ENRICHED:", enriched);
+        console.log("CALLING setHoldings");
+
         setHoldings(enriched);
+
+        console.log("setHoldings FINISHED");
+
         setTransactions(mappedTransactions);
 
-        // Sync wallet balance into user state
         if (wallet) {
-          setUser(prev => prev ? { ...prev, walletBalance: wallet.available_cash } : prev);
+          setUser((prev) =>
+            prev ? { ...prev, walletBalance: wallet.available_cash } : prev,
+          );
         }
       }
     } catch (err) {
@@ -205,7 +233,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const loadStocks = async () => {
       try {
         const response = await fetch("/api/nifty25");
-        const data = await response.json();
+
+        console.log("Status:", response.status);
+
+        const text = await response.text();
+        console.log(text);
+
+        const data = JSON.parse(text);
+
+        console.log("NIFTY RESPONSE =", data);
 
         const formattedStocks = data.map((stock: any) => ({
           id: stock.symbol,
@@ -484,9 +520,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
 
     try {
-      const res = await fetch("/api/buy", {
+      const res = await fetch("/portfolio/buy", {
         method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
         body: JSON.stringify({
           symbol: stock.symbol,
           companyName: stock.name,
@@ -533,9 +572,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
 
     try {
-      const res = await fetch("/api/sell", {
+      const res = await fetch("/portfolio/sell", {
         method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
         body: JSON.stringify({
           symbol: stock.symbol,
           quantity,

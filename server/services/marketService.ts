@@ -6,6 +6,14 @@ export async function getStock(symbol: string) {
   try {
     const quote = await yahooFinance.quote(symbol);
 
+    console.log("================================");
+    console.log("Symbol:", quote.symbol);
+    console.log("Price:", quote.regularMarketPrice);
+    console.log("Previous:", quote.regularMarketPreviousClose);
+    console.log("Time:", new Date(quote.regularMarketTime * 1000));
+    console.log("State:", quote.marketState);
+    console.log("================================");
+
     return {
       symbol: quote.symbol,
       name: quote.shortName,
@@ -25,7 +33,6 @@ export async function getStock(symbol: string) {
     throw err;
   }
 }
-
 
 export async function getMultipleStocks(symbols: string[]) {
   const stocks = await Promise.all(

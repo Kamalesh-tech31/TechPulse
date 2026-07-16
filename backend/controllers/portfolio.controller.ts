@@ -94,6 +94,7 @@ export class PortfolioController {
    */
   static async getDashboard(req: Request, res: Response) {
     try {
+      
       const userId = req.user!.userId;
       const livePricesRaw = req.query.prices as string | undefined;
       let livePrices: Record<string, number> = {};

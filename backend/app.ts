@@ -35,6 +35,10 @@ const limiter = rateLimit({
 app.use('/auth', authRoutes);
 app.use('/profile', profileRoutes);
 app.use('/onboarding', onboardingRoutes);
-app.use('/api', portfolioRoutes);   // ← persistent portfolio endpoints
+app.use("/portfolio", portfolioRoutes);// ← persistent portfolio endpoints
+
+app.get("/test", (req, res) => {
+  res.send("Backend works");
+});
 
 export default app;

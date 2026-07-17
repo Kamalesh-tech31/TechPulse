@@ -45,6 +45,7 @@ import {
   Briefcase,
   BookOpen,
   Cpu,
+  Brain,
   History,
   User,
   LogOut,
@@ -97,7 +98,7 @@ const NAV_SECTIONS: NavSection[] = [
   {
     label: "Grow",
     items: [
-      { id: "portfolio-analyzer", name: "AI Insights", Icon: Cpu },
+      { id: "ai-assistant", name: "AI Assistant", Icon: Brain },
       { id: "learning-center", name: "Learning Center", Icon: BookOpen },
     ],
   },

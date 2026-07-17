@@ -9,6 +9,7 @@ import { DashboardView } from './components/DashboardView';
 import { StockAnalysisView } from './components/StockAnalysisView';
 import { TradingSimulatorView } from './components/TradingSimulatorView';
 import { PortfolioAnalyzerView } from './components/PortfolioAnalyzerView';
+import { AIAssistantView } from './components/AIAssistantView';
 import { LearningCenterView } from './components/LearningCenterView';
 import { TransactionHistoryView } from './components/TransactionHistoryView';
 import { ProfileView } from './components/ProfileView';
@@ -36,7 +37,7 @@ const AppContent: React.FC = () => {
       case 'stock-analysis':
       case 'stock-detail':       return <StockAnalysisView />;
       case 'virtual-trading':    return <TradingSimulatorView />;
-      case 'portfolio-analyzer': return <PortfolioAnalyzerView />;
+      case 'ai-assistant':       return <AIAssistantView />;
       case 'transaction-history':return <TransactionHistoryView />;
       case 'learning-center':    return <LearningCenterView />;
       case 'profile':            return <ProfileView />;

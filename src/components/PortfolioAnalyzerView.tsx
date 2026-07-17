@@ -54,6 +54,9 @@ export const PortfolioAnalyzerView: React.FC = () => {
           walletBalance: user?.walletBalance || 0
         })
       });
+      if (!response.ok) {
+        throw new Error(`API error: ${response.status}`);
+      }
 
       const data = await response.json();
       setAnalysis(data);

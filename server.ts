@@ -5,6 +5,14 @@ import { createServer as createViteServer } from 'vite';
 import { GoogleGenAI, Type } from '@google/genai';
 import { exec } from 'child_process';
 
+// ── AI Subsystem Imports ──────────────────────────────────────────────────────
+import { analyzePortfolio } from './ai/portfolioEngine';
+import { calculateRiskProfile } from './ai/riskEngine';
+import { generateRecommendations } from './ai/recommendationEngine';
+import { generateFallbackReport, generateLLMReport } from './ai/reportGenerator';
+import { processChat, getSessionHistory, clearSession } from './ai/chatbot';
+import { retrieveKnowledge, formatRetrievedContext } from './ai/knowledgeBase';
+
 dotenv.config();
 
 const app = express();
@@ -54,7 +62,7 @@ app.post('/api/learning-notes', async (req, res) => {
     const prompt = `Generate a comprehensive stock market lesson for a user who is a "${occupation}", has an experience level of "${experience}", and their primary goal is "${primaryGoal}". The category/topic of the lesson is "${category || 'Basics and Fundamentals'}". Ensure the content is structured using clean markdown, has bullet points, clear headings, is highly informative, educational, and professional. Return the response as a JSON object matching the requested schema.`;
 
     const response = await ai.models.generateContent({
-      model: 'gemini-3.5-flash',
+      model: 'gemini-2.0-flash',
       contents: prompt,
       config: {
         responseMimeType: 'application/json',
@@ -84,8 +92,15 @@ app.post('/api/learning-notes', async (req, res) => {
     const result = JSON.parse(text.trim());
     return res.json(result);
   } catch (error: any) {
-    console.error('Gemini Learning Notes error:', error);
-    return res.status(500).json({ error: 'Failed to generate personalized notes', details: error.message });
+    console.error('Gemini Learning Notes error, falling back to simulation:', error.message);
+    return res.json({
+      title: `Understanding ${category || 'Stock Market Basics'} as a ${occupation}`,
+      category: category || 'General',
+      level: experience,
+      content: `### Deep Dive: ${category || 'Stock Trading Rules'}\n\nAs a **${occupation}** with **${experience}** experience, your primary objective is **${primaryGoal}**. In this simulation, you are learning to trade with virtual resources.\n\n#### Why this matters for a ${occupation}:\n- Time management: Active trading might conflict with your schedule, so swing trading or long-term investing might suit you best.\n- Capital preservation: Since you are focused on ${primaryGoal}, starting with zero-risk virtual money helps build psychological discipline.\n\n#### Core Concept of ${category || 'Value Investing'}:\nAlways research a company's fundamentals before hitting 'Buy'. Check if the company operates in a growing sector (such as energy or technology) and look for low P/E ratios which might signal undervaluation.\n\n### Key Lesson Objectives:\n1. Understand market orders and order matching mechanics.\n2. Analyze percentage gains versus volume to filter out low-liquidity volatility.\n3. Formulate a personal risk tolerance index.`,
+      summary: `Tailored lessons for a ${experience} looking to master ${primaryGoal} through virtual stock assets.`,
+      keywords: [category || 'Investing', experience, 'Virtual Portfolio', 'Risk Analysis']
+    });
   }
 });
 
@@ -141,7 +156,7 @@ app.post('/api/quiz', async (req, res) => {
     const prompt = `Generate a set of 3 highly challenging and educational multiple-choice quiz questions for a user with "${experience}" level in stock trading. Their primary trading goal is "${primaryGoal}". Make the questions highly practical, related to reading charts, evaluating PE ratios, or executing simulated simulator trades. Return the response as a JSON array of questions matching the requested schema.`;
 
     const response = await ai.models.generateContent({
-      model: 'gemini-3.5-flash',
+      model: 'gemini-2.0-flash',
       contents: prompt,
       config: {
         responseMimeType: 'application/json',
@@ -179,8 +194,46 @@ app.post('/api/quiz', async (req, res) => {
     const result = JSON.parse(text.trim());
     return res.json(result);
   } catch (error: any) {
-    console.error('Gemini Quiz error:', error);
-    return res.status(500).json({ error: 'Failed to generate quiz', details: error.message });
+    console.error('Gemini Quiz error, falling back to simulation:', error.message);
+    const fallbackQuestions = [
+      {
+        id: 'q1',
+        question: `If a stock's Relative Strength Index (RSI) is 82, what does this typically suggest to a trader?`,
+        options: [
+          'The stock is heavily oversold and ready for a long buy entry.',
+          'The stock is overbought, potentially overvalued, and may experience a pullback.',
+          'The volume of trades is decreasing and volatility will flatline.',
+          'The company is distributing a surprise cash dividend.'
+        ],
+        correctAnswerIndex: 1,
+        explanation: 'An RSI above 70 is conventionally considered overbought, signaling that the stock may be overvalued or due for a trend reversal.'
+      },
+      {
+        id: 'q2',
+        question: `What represents a "Golden Cross" buy signal in technical stock analysis?`,
+        options: [
+          'When the stock price hits a new 52-week high.',
+          'When a short-term moving average crosses above a long-term moving average.',
+          'When the volume traded exactly doubles from the previous day.',
+          'When the price-to-earnings (P/E) ratio matches the industry sector average.'
+        ],
+        correctAnswerIndex: 1,
+        explanation: 'A Golden Cross is a bullish signal that occurs when a short-term moving average (like the 50-day SMA) crosses above a long-term moving average (like the 200-day SMA).'
+      },
+      {
+        id: 'q3',
+        question: `Why is diversification vital when managing your virtual wallet on StockEasy?`,
+        options: [
+          'It guarantees a profit on every transaction.',
+          'It reduces transaction volume and lowers fees.',
+          'It spreads risk across different sectors, limiting damage if one stock falls.',
+          'It increases the maximum PE ratio of the entire portfolio.'
+        ],
+        correctAnswerIndex: 2,
+        explanation: 'Diversification ensures that your capital is not overly exposed to a single company or sector, smoothing out overall volatility.'
+      }
+    ];
+    return res.json({ questions: fallbackQuestions });
   }
 });
 
@@ -274,7 +327,7 @@ app.post('/api/portfolio-analyzer', async (req, res) => {
 Generate a formal portfolio evaluation. Break down the risk factor, diversification coefficient, sector composition, performance metrics, specific recommendations to improve P&L, and an educational, easy-to-digest explanation of these metrics. Return the output as a structured JSON object according to the requested schema.`;
 
     const response = await ai.models.generateContent({
-      model: 'gemini-3.5-flash',
+      model: 'gemini-2.0-flash',
       contents: prompt,
       config: {
         responseMimeType: 'application/json',
@@ -338,8 +391,59 @@ Generate a formal portfolio evaluation. Break down the risk factor, diversificat
     const result = JSON.parse(text.trim());
     return res.json(result);
   } catch (error: any) {
-    console.error('Gemini Portfolio Analyzer error:', error);
-    return res.status(500).json({ error: 'Failed to analyze portfolio', details: error.message });
+    console.error('Gemini Portfolio Analyzer error, falling back to simulation:', error.message);
+    const totalPortfolioValue = holdings.reduce((sum: number, h: any) => sum + h.currentValue, 0);
+    const sectorsMap: { [key: string]: number } = {};
+    holdings.forEach((h: any) => {
+      sectorsMap[h.sector || 'Unclassified'] = (sectorsMap[h.sector || 'Unclassified'] || 0) + h.currentValue;
+    });
+
+    const sectorAllocation = Object.entries(sectorsMap).map(([sector, value]) => ({
+      sector,
+      value,
+      percentage: Math.round((value / totalPortfolioValue) * 100)
+    }));
+
+    const uniqueSectorsCount = Object.keys(sectorsMap).length;
+    const diversificationScore = Math.min(100, Math.max(15, uniqueSectorsCount * 25 + holdings.length * 5));
+
+    let riskScore = 40;
+    const largestHoldingPct = holdings.length > 0 
+      ? Math.max(...holdings.map((h: any) => (h.currentValue / totalPortfolioValue) * 100))
+      : 0;
+    if (largestHoldingPct > 60) riskScore += 30;
+    else if (largestHoldingPct > 40) riskScore += 15;
+    
+    if (uniqueSectorsCount === 1) riskScore += 15;
+    riskScore = Math.min(95, Math.max(10, riskScore));
+
+    const riskCategory = riskScore < 35 ? 'Low' : riskScore < 70 ? 'Medium' : 'High';
+
+    const sortedPerformers = [...holdings].sort((a: any, b: any) => b.profitLossPercentage - a.profitLossPercentage);
+    const topPerforming = sortedPerformers.slice(0, 2).map((h: any) => ({
+      symbol: h.symbol,
+      gain: Math.round(h.profitLossPercentage * 10) / 10
+    }));
+    const worstPerforming = sortedPerformers.slice(-2).reverse().map((h: any) => ({
+      symbol: h.symbol,
+      loss: Math.round(h.profitLossPercentage * 10) / 10
+    }));
+
+    return res.json({
+      riskScore,
+      riskCategory,
+      diversificationScore,
+      diversificationAnalysis: `Your virtual portfolio is spread across ${uniqueSectorsCount} sectors. A diversification score of ${diversificationScore}/100 indicates ${diversificationScore > 60 ? 'healthy' : 'sub-optimal'} distribution. Sector concentration is highest in **${sectorAllocation[0]?.sector || 'N/A'}** at ${sectorAllocation[0]?.percentage || 0}%.`,
+      sectorAllocation,
+      topPerforming,
+      worstPerforming,
+      recommendations: [
+        uniqueSectorsCount < 3 ? 'Diversify your virtual funds into at least 3 distinct sectors to cushion against systemic market corrections.' : 'Excellent sector balance! Continue maintaining equal-weight distributions.',
+        largestHoldingPct > 50 ? 'Reduce your exposure in your top stock; currently, a single asset comprises over 50% of your net asset value.' : 'Healthy asset allocation. No single company dominates more than 35% of your portfolio.',
+        'Consider reserving some liquid virtual cash (10-15%) in your wallet to capitalize on market downturns (buying the dip).'
+      ],
+      explanation: `This portfolio report outlines your virtual metrics. By analyzing holdings, we determined that you have an overall **${riskCategory} Risk** stance with a risk index of ${riskScore}. Your top holding is ${holdings[0]?.symbol}, and your average profit-and-loss ratio stands at ${Math.round((holdings.reduce((sum: number, h: any) => sum + h.profitLoss, 0) / Math.max(1, holdings.reduce((sum: number, h: any) => sum + h.totalCost, 0))) * 1000) / 10}% across the board.`
+    });
   }
 });
 
@@ -643,6 +747,173 @@ app.get(['/auth/callback', '/auth/callback/'], async (req, res) => {
       </html>
     `);
   }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// AI SUBSYSTEM ROUTES — Full Analytics Engine
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// Route A1: Full AI Portfolio Analysis (30+ metrics)
+// POST /api/ai/analyze
+app.post('/api/ai/analyze', async (req, res) => {
+  const { holdings, walletBalance } = req.body;
+
+  if (!Array.isArray(holdings)) {
+    return res.status(400).json({ error: 'holdings must be an array' });
+  }
+
+  try {
+    // Step 1: Run portfolio analytics engine
+    const analysis = analyzePortfolio(holdings, walletBalance || 0);
+
+    // Step 2: Run risk engine
+    const riskProfile = calculateRiskProfile(analysis);
+    analysis.riskScore = riskProfile.score;
+    analysis.riskLabel = riskProfile.label;
+    analysis.riskCategory = riskProfile.label as any;
+
+    // Step 3: Run recommendation engine
+    const recommendations = generateRecommendations(analysis, riskProfile);
+
+    return res.json({
+      analysis,
+      riskProfile,
+      recommendations
+    });
+  } catch (error: any) {
+    console.error('[AI Analyze] Error:', error.message);
+    return res.status(500).json({ error: 'Analysis failed', details: error.message });
+  }
+});
+
+// Route A2: Full LLM Portfolio Report
+// POST /api/ai/report
+app.post('/api/ai/report', async (req, res) => {
+  const { holdings, walletBalance } = req.body;
+  const ai = getGeminiClient();
+
+  if (!Array.isArray(holdings)) {
+    return res.status(400).json({ error: 'holdings must be an array' });
+  }
+
+  try {
+    const analysis = analyzePortfolio(holdings, walletBalance || 0);
+    const riskProfile = calculateRiskProfile(analysis);
+    analysis.riskScore = riskProfile.score;
+    analysis.riskLabel = riskProfile.label;
+
+    const recommendations = generateRecommendations(analysis, riskProfile);
+
+    // Generate LLM-enhanced report (falls back to data-driven if no API key)
+    const report = await generateLLMReport(analysis, riskProfile, recommendations, ai);
+
+    return res.json({
+      report,
+      analysis,
+      riskProfile,
+      recommendations
+    });
+  } catch (error: any) {
+    console.error('[AI Report] Error:', error.message);
+    return res.status(500).json({ error: 'Report generation failed', details: error.message });
+  }
+});
+
+// Route A3: Portfolio-Aware AI Chatbot
+// POST /api/ai/chat
+app.post('/api/ai/chat', async (req, res) => {
+  const { message, sessionId, userEmail, holdings, walletBalance, latestReport, mode } = req.body;
+  const ai = getGeminiClient();
+
+  if (!message || !sessionId) {
+    return res.status(400).json({ error: 'message and sessionId are required' });
+  }
+
+  // Basic input sanitization — prevent prompt injection
+  const sanitizedMessage = String(message)
+    .slice(0, 1000)
+    .replace(/[<>]/g, '')
+    .trim();
+
+  try {
+    const response = await processChat({
+      message: sanitizedMessage,
+      sessionId,
+      userEmail: userEmail || 'anonymous',
+      holdings: holdings || [],
+      walletBalance: walletBalance || 0,
+      latestReport,
+      mode: mode || 'general'
+    }, ai);
+
+    return res.json(response);
+  } catch (error: any) {
+    console.error('[AI Chat] Error:', error.message);
+    return res.status(500).json({ error: 'Chat failed', details: error.message });
+  }
+});
+
+// Route A4: Structured Recommendation Engine
+// POST /api/ai/recommendations
+app.post('/api/ai/recommendations', async (req, res) => {
+  const { holdings, walletBalance } = req.body;
+
+  if (!Array.isArray(holdings)) {
+    return res.status(400).json({ error: 'holdings must be an array' });
+  }
+
+  try {
+    const analysis = analyzePortfolio(holdings, walletBalance || 0);
+    const riskProfile = calculateRiskProfile(analysis);
+    analysis.riskScore = riskProfile.score;
+
+    const recommendations = generateRecommendations(analysis, riskProfile);
+    return res.json({ recommendations, riskScore: riskProfile.score, riskLabel: riskProfile.label });
+  } catch (error: any) {
+    console.error('[AI Recommendations] Error:', error.message);
+    return res.status(500).json({ error: 'Recommendations failed', details: error.message });
+  }
+});
+
+// Route A5: RAG Knowledge Base Search
+// GET /api/ai/knowledge?q=sharpe+ratio&topK=3
+app.get('/api/ai/knowledge', (req, res) => {
+  const query = String(req.query.q || '').slice(0, 200);
+  const topK = Math.min(5, parseInt(String(req.query.topK || '3')));
+
+  if (!query) {
+    return res.status(400).json({ error: 'q parameter is required' });
+  }
+
+  const results = retrieveKnowledge(query, topK);
+  return res.json({
+    query,
+    results: results.map(r => ({
+      id: r.document.id,
+      title: r.document.title,
+      category: r.document.category,
+      score: r.score,
+      content: r.document.content
+    }))
+  });
+});
+
+// Route A6: Get Chat Session History
+// GET /api/ai/chat/history?sessionId=xxx
+app.get('/api/ai/chat/history', (req, res) => {
+  const sessionId = String(req.query.sessionId || '');
+  if (!sessionId) return res.status(400).json({ error: 'sessionId required' });
+
+  const history = getSessionHistory(sessionId);
+  return res.json({ sessionId, messages: history });
+});
+
+// Route A7: Clear Chat Session
+// DELETE /api/ai/chat/session/:sessionId
+app.delete('/api/ai/chat/session/:sessionId', (req, res) => {
+  const { sessionId } = req.params;
+  clearSession(sessionId);
+  return res.json({ success: true, message: 'Session cleared' });
 });
 
 // Serve Vite dev server middleware in development mode

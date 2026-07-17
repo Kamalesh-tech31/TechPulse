@@ -222,18 +222,22 @@ Also provide one paragraph each for:
 
 Return JSON with keys: executiveSummary, investmentOpportunities, portfolioHealthScore`;
 
-    const response = await aiClient.models.generateContent({
-      model: 'gemini-2.0-flash',
-      contents: prompt,
-      config: {
-        responseMimeType: 'application/json',
-        systemInstruction: PORTFOLIO_REPORT_SYSTEM,
-        temperature: 0.6
-      }
+    const response = await aiClient.chat.completions.create({
+      model: "llama-3.3-70b-versatile",
+      messages: [
+        { 
+          role: 'system', 
+          content: `${PORTFOLIO_REPORT_SYSTEM}\n\nOutput ONLY valid JSON matching this schema: { "executiveSummary": "string", "investmentOpportunities": "string", "portfolioHealthScore": "string" }` 
+        },
+        { role: 'user', content: prompt }
+      ],
+      response_format: { type: 'json_object' },
+      temperature: 0.6
     });
 
-    if (response.text) {
-      const enhanced = JSON.parse(response.text.trim());
+    const responseText = response.choices[0]?.message?.content;
+    if (responseText) {
+      const enhanced = JSON.parse(responseText.trim());
       return {
         ...baseReport,
         executiveSummary: enhanced.executiveSummary || baseReport.executiveSummary,

@@ -232,6 +232,13 @@ export interface ChatMessage {
   sources?: string[];
 }
 
+export interface ChatSession {
+  id: string;
+  title: string;
+  date: string;
+  messages: ChatMessage[];
+}
+
 export interface AIAnalysisResult {
   analysis: FullPortfolioAnalysis;
   riskProfile: RiskProfile;

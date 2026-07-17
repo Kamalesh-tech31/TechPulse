@@ -1107,38 +1107,34 @@ export async function processChat(
       session, resolvedMessage, holdings, walletBalance, latestReport
     );
 
-    // ── Build Gemini message array ─────────────────────────────────────────
-    // Gemini API format: array of content objects with role + parts
-    const contents: any[] = [];
+    // ── Build Groq/OpenAI message array ────────────────────────────────────
+    const messages: any[] = [];
+    messages.push({ role: 'system', content: systemPrompt });
 
-    // Inject previous conversation (not the system prompt — that goes separately)
+    // Inject previous conversation
     for (const msg of conversationHistory) {
-      contents.push({
-        role: msg.role,
-        parts: [{ text: msg.content }]
+      messages.push({
+        role: msg.role === 'user' ? 'user' : 'assistant',
+        content: msg.content
       });
     }
 
     // Add current user message
-    contents.push({
+    messages.push({
       role: 'user',
-      parts: [{ text: resolvedMessage !== message
+      content: resolvedMessage !== message
         ? `${resolvedMessage} (context: user said "${message}")`
         : message
-      }]
     });
 
-    const response = await aiClient.models.generateContent({
-      model: 'gemini-2.0-flash',
-      contents,
-      config: {
-        systemInstruction: systemPrompt,
-        temperature: 0.7,
-        maxOutputTokens: 1200
-      }
+    const response = await aiClient.chat.completions.create({
+      model:'llama-3.3-70b-versatile',
+      messages,
+      temperature: 0.7,
+      max_tokens: 1200
     });
 
-    const replyText = response.text || generateFallbackResponse(resolvedMessage, holdings, walletBalance, latestReport);
+    const replyText = response.choices[0]?.message?.content || generateFallbackResponse(resolvedMessage, holdings, walletBalance, latestReport);
 
     // ── Add assistant reply to session ────────────────────────────────────
     addMessageToSession(sessionId, {
@@ -1151,7 +1147,7 @@ export async function processChat(
     return { reply: replyText, sources, sessionId, suggestedFollowUps };
 
   } catch (error: any) {
-    console.error('[Chatbot] Gemini error:', error.message);
+    console.error('[Chatbot] Groq error:', error.message);
     const fallback = generateFallbackResponse(resolvedMessage, holdings, walletBalance, latestReport);
     addMessageToSession(sessionId, {
       role: 'assistant',

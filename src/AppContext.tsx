@@ -5,6 +5,12 @@ import {
   Transaction,
   UserProfile,
   OnboardingPreferences,
+  FullPortfolioAnalysis,
+  RiskProfile,
+  Recommendation,
+  PortfolioReport,
+  ChatMessage,
+  ChatSession,
 } from "./types";
 import { INITIAL_STOCKS } from "./mockData";
 
@@ -34,6 +40,24 @@ interface AppContextType {
   resetMoney: () => void;
   setActiveView: (view: string) => void;
   setSelectedStockId: (id: string | null) => void;
+  aiState: {
+    analysis: FullPortfolioAnalysis | null;
+    riskProfile: RiskProfile | null;
+    recommendations: Recommendation[];
+    report: PortfolioReport | null;
+    hasAnalyzed: boolean;
+  };
+  setAiState: React.Dispatch<React.SetStateAction<{
+    analysis: FullPortfolioAnalysis | null;
+    riskProfile: RiskProfile | null;
+    recommendations: Recommendation[];
+    report: PortfolioReport | null;
+    hasAnalyzed: boolean;
+  }>>;
+  aiChatMessages: ChatMessage[];
+  setAiChatMessages: React.Dispatch<React.SetStateAction<ChatMessage[]>>;
+  aiChatSessions: ChatSession[];
+  setAiChatSessions: React.Dispatch<React.SetStateAction<ChatSession[]>>;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -73,6 +97,56 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
 
   const [selectedStockId, setSelectedStockId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
+
+  // Persistent AI State
+  const [aiState, setAiState] = useState<{
+    analysis: FullPortfolioAnalysis | null;
+    riskProfile: RiskProfile | null;
+    recommendations: Recommendation[];
+    report: PortfolioReport | null;
+    hasAnalyzed: boolean;
+  }>({
+    analysis: null,
+    riskProfile: null,
+    recommendations: [],
+    report: null,
+    hasAnalyzed: false,
+  });
+
+  const [aiChatMessages, setAiChatMessages] = useState<ChatMessage[]>([]);
+  const [aiChatSessions, setAiChatSessions] = useState<ChatSession[]>([]);
+
+  // Load user-specific AI data when user logs in
+  useEffect(() => {
+    if (user?.email) {
+      const email = user.email;
+      const savedState = localStorage.getItem(`stockeasy_ai_state_${email}`);
+      setAiState(savedState ? JSON.parse(savedState) : { analysis: null, riskProfile: null, recommendations: [], report: null, hasAnalyzed: false });
+      
+      const savedChat = localStorage.getItem(`stockeasy_ai_chat_${email}`);
+      setAiChatMessages(savedChat ? JSON.parse(savedChat) : []);
+      
+      const savedSessions = localStorage.getItem(`stockeasy_ai_chat_sessions_${email}`);
+      setAiChatSessions(savedSessions ? JSON.parse(savedSessions) : []);
+    } else {
+      setAiState({ analysis: null, riskProfile: null, recommendations: [], report: null, hasAnalyzed: false });
+      setAiChatMessages([]);
+      setAiChatSessions([]);
+    }
+  }, [user?.email]);
+
+  // Sync AI state to localStorage on changes
+  useEffect(() => {
+    if (user?.email) localStorage.setItem(`stockeasy_ai_state_${user.email}`, JSON.stringify(aiState));
+  }, [aiState, user?.email]);
+
+  useEffect(() => {
+    if (user?.email) localStorage.setItem(`stockeasy_ai_chat_${user.email}`, JSON.stringify(aiChatMessages));
+  }, [aiChatMessages, user?.email]);
+
+  useEffect(() => {
+    if (user?.email) localStorage.setItem(`stockeasy_ai_chat_sessions_${user.email}`, JSON.stringify(aiChatSessions));
+  }, [aiChatSessions, user?.email]);
 
   // Sync state to localStorage on changes
   useEffect(() => {
@@ -508,6 +582,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
         resetMoney,
         setActiveView,
         setSelectedStockId,
+        aiState,
+        setAiState,
+        aiChatMessages,
+        setAiChatMessages,
+        aiChatSessions,
+        setAiChatSessions,
       }}
     >
       {children}

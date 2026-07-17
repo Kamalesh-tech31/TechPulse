@@ -502,27 +502,24 @@ function generatePDF(report: PortfolioReport, analysis: FullPortfolioAnalysis, r
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export const AIAssistantView: React.FC = () => {
-  const { holdings, user } = useApp();
+  const { holdings, user, aiState, setAiState, aiChatMessages, setAiChatMessages, aiChatSessions, setAiChatSessions } = useApp();
+  const { analysis, riskProfile, recommendations, report, hasAnalyzed } = aiState;
 
   // ── State ──
   const [activeTab, setActiveTab] = useState<TabKey>('overview');
-  const [analysis, setAnalysis]   = useState<FullPortfolioAnalysis | null>(null);
-  const [riskProfile, setRiskProfile] = useState<RiskProfile | null>(null);
-  const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
-  const [report, setReport]       = useState<PortfolioReport | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [loadingStep, setLoadingStep] = useState(0);
-  const [hasAnalyzed, setHasAnalyzed] = useState(false);
   const [errorMsg, setErrorMsg]   = useState('');
   const [expandedRecs, setExpandedRecs] = useState<Set<string>>(new Set());
   const [isPdfGenerating, setIsPdfGenerating] = useState(false);
 
   // Chat state
-  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [chatInput, setChatInput]   = useState('');
   const [isChatLoading, setIsChatLoading] = useState(false);
   const [suggestedFollowUps, setSuggestedFollowUps] = useState<string[]>([]);
-  const [sessionId] = useState(() => `sess_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`);
+  const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
+
+  const currentSessionId = activeSessionId || 'default';
 
   const chatEndRef  = useRef<HTMLDivElement>(null);
   const chatInputRef = useRef<HTMLInputElement>(null);
@@ -530,7 +527,7 @@ export const AIAssistantView: React.FC = () => {
   // ── Scroll chat to bottom ──
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [chatMessages, isChatLoading]);
+  }, [aiChatMessages, isChatLoading]);
 
   // ── Loading step progress ──
   useEffect(() => {
@@ -554,11 +551,13 @@ export const AIAssistantView: React.FC = () => {
       });
       if (!res.ok) throw new Error(`Server error: ${res.status}`);
       const data = await res.json();
-      setReport(data.report);
-      setAnalysis(data.analysis);
-      setRiskProfile(data.riskProfile);
-      setRecommendations(data.recommendations || []);
-      setHasAnalyzed(true);
+      setAiState({
+        report: data.report,
+        analysis: data.analysis,
+        riskProfile: data.riskProfile,
+        recommendations: data.recommendations || [],
+        hasAnalyzed: true
+      });
     } catch (err: any) {
       setErrorMsg('Analysis failed. Please try again.');
       console.error('Analysis error:', err);
@@ -573,7 +572,7 @@ export const AIAssistantView: React.FC = () => {
     if (!trimmed || !user) return;
 
     const userMsg: ChatMessage = { role: 'user', content: trimmed, timestamp: new Date().toISOString() };
-    setChatMessages(prev => [...prev, userMsg]);
+    setAiChatMessages(prev => [...prev, userMsg]);
     setChatInput('');
     setIsChatLoading(true);
     setSuggestedFollowUps([]);
@@ -584,7 +583,7 @@ export const AIAssistantView: React.FC = () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           message: trimmed,
-          sessionId,
+          sessionId: currentSessionId,
           userEmail: user.email,
           holdings,
           walletBalance: user.walletBalance,
@@ -593,21 +592,62 @@ export const AIAssistantView: React.FC = () => {
       });
       if (!res.ok) throw new Error(`${res.status}`);
       const data = await res.json();
-      setChatMessages(prev => [...prev, {
+      
+      const newAssistantMsg: ChatMessage = {
         role: 'assistant',
         content: data.reply,
         timestamp: new Date().toISOString(),
         sources: data.sources,
-      }]);
+      };
+      
+      setAiChatMessages(prev => {
+        const updated = [...prev, newAssistantMsg];
+        syncSession(updated);
+        return updated;
+      });
       if (data.suggestedFollowUps?.length) setSuggestedFollowUps(data.suggestedFollowUps);
     } catch {
-      setChatMessages(prev => [...prev, {
+      const errorMsg: ChatMessage = {
         role: 'assistant',
         content: '⚠️ I encountered an error. Please check your connection and try again.',
         timestamp: new Date().toISOString(),
-      }]);
+      };
+      setAiChatMessages(prev => {
+        const updated = [...prev, errorMsg];
+        syncSession(updated);
+        return updated;
+      });
     } finally {
       setIsChatLoading(false);
+    }
+  };
+
+  const syncSession = (messages: ChatMessage[]) => {
+    if (messages.length === 0) return;
+    setAiChatSessions(prev => {
+      const existingIdx = prev.findIndex(s => s.id === currentSessionId);
+      const title = messages.find(m => m.role === 'user')?.content.slice(0, 30) + '...' || 'New Chat';
+      if (existingIdx >= 0) {
+        const next = [...prev];
+        next[existingIdx] = { ...next[existingIdx], messages };
+        return next;
+      }
+      return [{ id: currentSessionId, title, date: new Date().toISOString(), messages }, ...prev];
+    });
+  };
+
+  const startNewChat = () => {
+    setActiveSessionId(`sess_${Date.now()}`);
+    setAiChatMessages([]);
+    setSuggestedFollowUps([]);
+  };
+
+  const loadSession = (sessionId: string) => {
+    const session = aiChatSessions.find(s => s.id === sessionId);
+    if (session) {
+      setActiveSessionId(session.id);
+      setAiChatMessages(session.messages);
+      setSuggestedFollowUps([]);
     }
   };
 
@@ -1053,7 +1093,61 @@ export const AIAssistantView: React.FC = () => {
 
   // ─── RENDER: Chat Tab ─────────────────────────────────────────────────────────
   const renderChat = () => (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 16, maxWidth: 800, margin: '0 auto', width: '100%' }}>
+    <div style={{ display: 'flex', gap: 20, height: '80vh', minHeight: 600 }}>
+      {/* Sidebar: Chat History */}
+      <div style={{
+        width: 260, display: 'flex', flexDirection: 'column', gap: 12,
+        background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)',
+        borderRadius: 16, padding: 16, overflowY: 'auto'
+      }}>
+        <button
+          onClick={startNewChat}
+          style={{
+            padding: '12px', borderRadius: 12, border: '1px solid rgba(79,107,255,0.3)',
+            background: 'rgba(79,107,255,0.1)', color: accent, fontSize: 13,
+            fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center',
+            justifyContent: 'center', gap: 8, transition: 'all 0.2s',
+          }}
+          onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(79,107,255,0.2)'; }}
+          onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(79,107,255,0.1)'; }}
+        >
+          + New Chat
+        </button>
+        <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: 0.5, marginTop: 12, marginBottom: 4 }}>
+          Past Sessions
+        </div>
+        {aiChatSessions.length === 0 ? (
+          <div style={{ color: 'rgba(255,255,255,0.3)', fontSize: 12, textAlign: 'center', marginTop: 20 }}>
+            No past sessions yet.
+          </div>
+        ) : (
+          aiChatSessions.map(session => (
+            <div
+              key={session.id}
+              onClick={() => loadSession(session.id)}
+              style={{
+                padding: '10px 12px', borderRadius: 8, cursor: 'pointer',
+                background: activeSessionId === session.id ? 'rgba(255,255,255,0.08)' : 'transparent',
+                border: '1px solid',
+                borderColor: activeSessionId === session.id ? 'rgba(255,255,255,0.1)' : 'transparent',
+                transition: 'background 0.2s',
+              }}
+              onMouseEnter={e => { if (activeSessionId !== session.id) (e.currentTarget as HTMLDivElement).style.background = 'rgba(255,255,255,0.04)'; }}
+              onMouseLeave={e => { if (activeSessionId !== session.id) (e.currentTarget as HTMLDivElement).style.background = 'transparent'; }}
+            >
+              <div style={{ fontSize: 13, color: '#fff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                {session.title}
+              </div>
+              <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', marginTop: 4 }}>
+                {new Date(session.date).toLocaleDateString()}
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+
+      {/* Main Chat Window */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 16, flex: 1, maxWidth: 800, margin: '0 auto', width: '100%' }}>
 
       {/* Chat window */}
       <Card style={{ padding: 0, overflow: 'hidden' }}>
@@ -1085,7 +1179,7 @@ export const AIAssistantView: React.FC = () => {
           minHeight: 380, maxHeight: 480, overflowY: 'auto',
           padding: '20px', display: 'flex', flexDirection: 'column', gap: 16,
         }}>
-          {chatMessages.length === 0 && (
+          {aiChatMessages.length === 0 && (
             <div style={{ textAlign: 'center', paddingTop: 40 }}>
               <div style={{
                 width: 56, height: 56, borderRadius: 16, margin: '0 auto 16px',
@@ -1117,7 +1211,7 @@ export const AIAssistantView: React.FC = () => {
             </div>
           )}
 
-          {chatMessages.map((msg, i) => (
+          {aiChatMessages.map((msg, i) => (
             <div key={i} style={{
               display: 'flex',
               justifyContent: msg.role === 'user' ? 'flex-end' : 'flex-start',
@@ -1250,15 +1344,13 @@ export const AIAssistantView: React.FC = () => {
           ))}
         </div>
       )}
+      </div>
     </div>
   );
 
   // ─── MAIN RENDER ─────────────────────────────────────────────────────────────
   return (
-    <div style={{
-      minHeight: '100vh', padding: '24px 32px 40px',
-      background: '#0d1117', color: '#fff', fontFamily: "'Inter', sans-serif",
-    }}>
+    <div className="space-y-6">
       <style>{`
         @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
         @keyframes fadeInUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }

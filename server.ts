@@ -2,7 +2,7 @@ import express from 'express';
 import path from 'path';
 import dotenv from 'dotenv';
 import { createServer as createViteServer } from 'vite';
-import { GoogleGenAI, Type } from '@google/genai';
+import OpenAI from 'openai';
 import { exec } from 'child_process';
 
 // ── AI Subsystem Imports ──────────────────────────────────────────────────────
@@ -20,22 +20,18 @@ const PORT = 3000;
 
 app.use(express.json());
 
-// Initialize Gemini client lazily
-let aiClient: GoogleGenAI | null = null;
-function getGeminiClient(): GoogleGenAI | null {
-  const key = process.env.GEMINI_API_KEY;
-  if (!key || key === 'MY_GEMINI_API_KEY') {
-    console.warn('GEMINI_API_KEY is not set or using placeholder. Running in Simulation/Fallback Mode.');
+// Initialize Groq client lazily
+let aiClient: OpenAI | null = null;
+function getAIClient(): OpenAI | null {
+  const key = process.env.GROQ_API_KEY;
+  if (!key || key === 'xai-********************************') {
+    console.warn('GROQ_API_KEY is not set or using placeholder. Running in Simulation/Fallback Mode.');
     return null;
   }
   if (!aiClient) {
-    aiClient = new GoogleGenAI({
+    aiClient = new OpenAI({
       apiKey: key,
-      httpOptions: {
-        headers: {
-          'User-Agent': 'aistudio-build',
-        }
-      }
+      baseURL: 'https://api.groq.com/openai/v1',
     });
   }
   return aiClient;
@@ -44,7 +40,7 @@ function getGeminiClient(): GoogleGenAI | null {
 // Route 1: AI Learning Notes Generator
 app.post('/api/learning-notes', async (req, res) => {
   const { occupation, experience, primaryGoal, category } = req.body;
-  const ai = getGeminiClient();
+  const ai = getAIClient();
 
   if (!ai) {
     // Elegant Simulated Learning Notes
@@ -61,38 +57,26 @@ app.post('/api/learning-notes', async (req, res) => {
   try {
     const prompt = `Generate a comprehensive stock market lesson for a user who is a "${occupation}", has an experience level of "${experience}", and their primary goal is "${primaryGoal}". The category/topic of the lesson is "${category || 'Basics and Fundamentals'}". Ensure the content is structured using clean markdown, has bullet points, clear headings, is highly informative, educational, and professional. Return the response as a JSON object matching the requested schema.`;
 
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.0-flash',
-      contents: prompt,
-      config: {
-        responseMimeType: 'application/json',
-        systemInstruction: 'You are an elite financial academic and veteran quantitative trader. Provide clear, accurate, high-quality lessons tailored specifically to the user\'s background, avoiding generic explanations.',
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            title: { type: Type.STRING },
-            category: { type: Type.STRING },
-            level: { type: Type.STRING },
-            content: { type: Type.STRING, description: 'The comprehensive lesson content written in Markdown' },
-            summary: { type: Type.STRING },
-            keywords: {
-              type: Type.ARRAY,
-              items: { type: Type.STRING }
-            }
-          },
-          required: ['title', 'category', 'level', 'content', 'summary', 'keywords']
-        }
-      }
+    const response = await ai.chat.completions.create({
+      model: 'llama-3.3-70b-versatile',
+      messages: [
+        { 
+          role: 'system', 
+          content: 'You are an elite financial academic and veteran quantitative trader. Provide clear, accurate, high-quality lessons tailored specifically to the user\'s background, avoiding generic explanations.\n\nOutput ONLY valid JSON matching this schema: { "title": "string", "category": "string", "level": "string", "content": "markdown string", "summary": "string", "keywords": ["string"] }' 
+        },
+        { role: 'user', content: prompt }
+      ],
+      response_format: { type: 'json_object' }
     });
 
-    const text = response.text;
+    const text = response.choices[0]?.message?.content;
     if (!text) {
-      throw new Error('No content returned from Gemini');
+      throw new Error('No content returned from Groq');
     }
     const result = JSON.parse(text.trim());
     return res.json(result);
   } catch (error: any) {
-    console.error('Gemini Learning Notes error, falling back to simulation:', error.message);
+    console.error('Groq Learning Notes error, falling back to simulation:', error.message);
     return res.json({
       title: `Understanding ${category || 'Stock Market Basics'} as a ${occupation}`,
       category: category || 'General',
@@ -107,46 +91,22 @@ app.post('/api/learning-notes', async (req, res) => {
 // Route 2: AI Quiz Generator
 app.post('/api/quiz', async (req, res) => {
   const { experience, primaryGoal } = req.body;
-  const ai = getGeminiClient();
+  const ai = getAIClient();
 
   if (!ai) {
     // Simulated Quiz questions based on experience
     const fallbackQuestions = [
       {
         id: 'q1',
-        question: `If a stock's Relative Strength Index (RSI) is 82, what does this typically suggest to a trader?`,
+        question: `Based on your experience level (${experience}), what is the most appropriate first step before buying a stock?`,
         options: [
-          'The stock is heavily oversold and ready for a long buy entry.',
-          'The stock is overbought, potentially overvalued, and may experience a pullback.',
-          'The volume of trades is decreasing and volatility will flatline.',
-          'The company is distributing a surprise cash dividend.'
+          'Checking the stock\'s all-time high and buying immediately.',
+          'Reviewing the company\'s quarterly earnings and P/E ratio.',
+          'Borrowing money to maximize the amount of shares you can buy.',
+          'Buying whatever is trending on social media that day.'
         ],
         correctAnswerIndex: 1,
-        explanation: 'An RSI above 70 is conventionally considered overbought, signaling that the stock may be overvalued or due for a trend reversal.'
-      },
-      {
-        id: 'q2',
-        question: `What represents a "Golden Cross" buy signal in technical stock analysis?`,
-        options: [
-          'When the stock price hits a new 52-week high.',
-          'When a short-term moving average crosses above a long-term moving average.',
-          'When the volume traded exactly doubles from the previous day.',
-          'When the price-to-earnings (P/E) ratio matches the industry sector average.'
-        ],
-        correctAnswerIndex: 1,
-        explanation: 'A Golden Cross is a bullish signal that occurs when a short-term moving average (like the 50-day SMA) crosses above a long-term moving average (like the 200-day SMA).'
-      },
-      {
-        id: 'q3',
-        question: `Why is diversification vital when managing your virtual wallet on StockEasy?`,
-        options: [
-          'It guarantees a profit on every transaction.',
-          'It reduces transaction volume and lowers fees.',
-          'It spreads risk across different sectors, limiting damage if one stock falls.',
-          'It increases the maximum PE ratio of the entire portfolio.'
-        ],
-        correctAnswerIndex: 2,
-        explanation: 'Diversification ensures that your capital is not overly exposed to a single company or sector, smoothing out overall volatility.'
+        explanation: 'Fundamental analysis is crucial. Evaluating earnings and the P/E ratio gives insight into a company\'s financial health before committing capital.'
       }
     ];
     return res.json({ questions: fallbackQuestions });
@@ -155,46 +115,26 @@ app.post('/api/quiz', async (req, res) => {
   try {
     const prompt = `Generate a set of 3 highly challenging and educational multiple-choice quiz questions for a user with "${experience}" level in stock trading. Their primary trading goal is "${primaryGoal}". Make the questions highly practical, related to reading charts, evaluating PE ratios, or executing simulated simulator trades. Return the response as a JSON array of questions matching the requested schema.`;
 
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.0-flash',
-      contents: prompt,
-      config: {
-        responseMimeType: 'application/json',
-        systemInstruction: 'You are an expert financial educator. Create 3 highly relevant and non-trivial multiple choice questions. Each question must have exactly 4 choices, a correct index (0 to 3), and a detailed explanation of why the correct option is right and others are wrong.',
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            questions: {
-              type: Type.ARRAY,
-              items: {
-                type: Type.OBJECT,
-                properties: {
-                  id: { type: Type.STRING },
-                  question: { type: Type.STRING },
-                  options: {
-                    type: Type.ARRAY,
-                    items: { type: Type.STRING }
-                  },
-                  correctAnswerIndex: { type: Type.INTEGER },
-                  explanation: { type: Type.STRING }
-                },
-                required: ['id', 'question', 'options', 'correctAnswerIndex', 'explanation']
-              }
-            }
-          },
-          required: ['questions']
-        }
-      }
+    const response = await ai.chat.completions.create({
+      model: "llama-3.3-70b-versatile" ,
+      messages: [
+        { 
+          role: 'system', 
+          content: 'You are an expert financial educator. Create 3 highly relevant and non-trivial multiple choice questions. Each question must have exactly 4 choices, a correct index (0 to 3), and a detailed explanation of why the correct option is right and others are wrong.\n\nOutput ONLY valid JSON matching this schema: { "questions": [ { "id": "string", "question": "string", "options": ["string", "string", "string", "string"], "correctAnswerIndex": 0, "explanation": "string" } ] }' 
+        },
+        { role: 'user', content: prompt }
+      ],
+      response_format: { type: 'json_object' }
     });
 
-    const text = response.text;
+    const text = response.choices[0]?.message?.content;
     if (!text) {
-      throw new Error('No content returned from Gemini');
+      throw new Error('No content returned from Groq');
     }
     const result = JSON.parse(text.trim());
     return res.json(result);
   } catch (error: any) {
-    console.error('Gemini Quiz error, falling back to simulation:', error.message);
+    console.error('Groq Quiz error, falling back to simulation:', error.message);
     const fallbackQuestions = [
       {
         id: 'q1',
@@ -240,7 +180,7 @@ app.post('/api/quiz', async (req, res) => {
 // Route 3: AI Portfolio Analyzer
 app.post('/api/portfolio-analyzer', async (req, res) => {
   const { holdings, walletBalance } = req.body;
-  const ai = getGeminiClient();
+  const ai = getAIClient();
 
   // If no holdings are present, create a clean message
   if (!holdings || holdings.length === 0) {
@@ -326,72 +266,26 @@ app.post('/api/portfolio-analyzer', async (req, res) => {
 
 Generate a formal portfolio evaluation. Break down the risk factor, diversification coefficient, sector composition, performance metrics, specific recommendations to improve P&L, and an educational, easy-to-digest explanation of these metrics. Return the output as a structured JSON object according to the requested schema.`;
 
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.0-flash',
-      contents: prompt,
-      config: {
-        responseMimeType: 'application/json',
-        systemInstruction: 'You are a Senior Portfolio Manager and Chartered Financial Analyst (CFA). Provide actionable, intelligent, objective insights into the user\'s virtual stock holdings. Speak constructively to help them learn risk management, allocation weighting, and volatility mitigation.',
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            riskScore: { type: Type.INTEGER, description: 'Risk score from 1 (lowest risk) to 100 (extreme risk)' },
-            riskCategory: { type: Type.STRING, description: '"Low", "Medium", or "High"' },
-            diversificationScore: { type: Type.INTEGER, description: 'Diversification score from 1 to 100' },
-            diversificationAnalysis: { type: Type.STRING, description: 'Detailed analysis of their asset diversification' },
-            sectorAllocation: {
-              type: Type.ARRAY,
-              items: {
-                type: Type.OBJECT,
-                properties: {
-                  sector: { type: Type.STRING },
-                  percentage: { type: Type.INTEGER },
-                  value: { type: Type.NUMBER }
-                },
-                required: ['sector', 'percentage', 'value']
-              }
-            },
-            topPerforming: {
-              type: Type.ARRAY,
-              items: {
-                type: Type.OBJECT,
-                properties: {
-                  symbol: { type: Type.STRING },
-                  gain: { type: Type.NUMBER }
-                },
-                required: ['symbol', 'gain']
-              }
-            },
-            worstPerforming: {
-              type: Type.ARRAY,
-              items: {
-                type: Type.OBJECT,
-                properties: {
-                  symbol: { type: Type.STRING },
-                  loss: { type: Type.NUMBER }
-                },
-                required: ['symbol', 'loss']
-              }
-            },
-            recommendations: {
-              type: Type.ARRAY,
-              items: { type: Type.STRING }
-            },
-            explanation: { type: Type.STRING, description: 'An educational, clear, beginner-friendly explanation of why their portfolio scored this way' }
-          },
-          required: ['riskScore', 'riskCategory', 'diversificationScore', 'diversificationAnalysis', 'sectorAllocation', 'topPerforming', 'worstPerforming', 'recommendations', 'explanation']
-        }
-      }
+    const response = await ai.chat.completions.create({
+      model: 'llama-3.3-70b-versatile',
+      messages: [
+        { 
+          role: 'system', 
+          content: 'You are a Senior Portfolio Manager and Chartered Financial Analyst (CFA). Provide actionable, intelligent, objective insights into the user\'s virtual stock holdings. Speak constructively to help them learn risk management, allocation weighting, and volatility mitigation.\n\nOutput ONLY valid JSON matching this schema: { "riskScore": 50, "riskCategory": "Medium", "diversificationScore": 75, "diversificationAnalysis": "string", "sectorAllocation": [ { "sector": "string", "percentage": 0, "value": 0 } ], "topPerforming": [ { "symbol": "string", "gain": 0.0 } ], "worstPerforming": [ { "symbol": "string", "loss": 0.0 } ], "recommendations": ["string"], "explanation": "string" }' 
+        },
+        { role: 'user', content: prompt }
+      ],
+      response_format: { type: 'json_object' }
     });
 
-    const text = response.text;
+    const text = response.choices[0]?.message?.content;
     if (!text) {
-      throw new Error('No content returned from Gemini');
+      throw new Error('No content returned from Groq');
     }
     const result = JSON.parse(text.trim());
     return res.json(result);
   } catch (error: any) {
-    console.error('Gemini Portfolio Analyzer error, falling back to simulation:', error.message);
+    console.error('Groq Portfolio Analyzer error, falling back to simulation:', error.message);
     const totalPortfolioValue = holdings.reduce((sum: number, h: any) => sum + h.currentValue, 0);
     const sectorsMap: { [key: string]: number } = {};
     holdings.forEach((h: any) => {
@@ -790,7 +684,7 @@ app.post('/api/ai/analyze', async (req, res) => {
 // POST /api/ai/report
 app.post('/api/ai/report', async (req, res) => {
   const { holdings, walletBalance } = req.body;
-  const ai = getGeminiClient();
+  const ai = getAIClient();
 
   if (!Array.isArray(holdings)) {
     return res.status(400).json({ error: 'holdings must be an array' });
@@ -823,7 +717,7 @@ app.post('/api/ai/report', async (req, res) => {
 // POST /api/ai/chat
 app.post('/api/ai/chat', async (req, res) => {
   const { message, sessionId, userEmail, holdings, walletBalance, latestReport, mode } = req.body;
-  const ai = getGeminiClient();
+  const ai = getAIClient();
 
   if (!message || !sessionId) {
     return res.status(400).json({ error: 'message and sessionId are required' });

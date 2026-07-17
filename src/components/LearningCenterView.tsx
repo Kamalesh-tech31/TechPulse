@@ -683,43 +683,39 @@ const ParticleBurst: React.FC<{ active: boolean }> = ({ active }) => {
 export const LearningCenterView: React.FC = () => {
   const { setActiveView } = useApp();
 
-  // ── LOCAL STORAGE PROGRESS SYNC ──
-  const [completedLessons, setCompletedLessons] = useState<string[]>(() => {
-    const saved = localStorage.getItem('stockeasy_completed_lessons');
-    return saved ? JSON.parse(saved) : [];
-  });
+  const [completedLessons, setCompletedLessons] = useState<string[]>([]);
+  const [completedQuizzes, setCompletedQuizzes] = useState<number[]>([]);
+  const [quizScores, setQuizScores] = useState<Record<number, number>>({});
+  const [finalAssessmentPassed, setFinalAssessmentPassed] = useState<boolean>(false);
+  const [loading, setLoading] = useState<boolean>(true);
 
-  const [completedQuizzes, setCompletedQuizzes] = useState<number[]>(() => {
-    const saved = localStorage.getItem('stockeasy_completed_quizzes');
-    return saved ? JSON.parse(saved) : [];
-  });
-
-  const [quizScores, setQuizScores] = useState<Record<number, number>>(() => {
-    const saved = localStorage.getItem('stockeasy_quiz_scores');
-    return saved ? JSON.parse(saved) : {};
-  });
-
-  const [finalAssessmentPassed, setFinalAssessmentPassed] = useState<boolean>(() => {
-    const saved = localStorage.getItem('stockeasy_final_assessment_passed');
-    return saved ? JSON.parse(saved) : false;
-  });
-
-  // Sync progress arrays to localStorage
+  // Fetch progress from database on mount
   useEffect(() => {
-    localStorage.setItem('stockeasy_completed_lessons', JSON.stringify(completedLessons));
-  }, [completedLessons]);
-
-  useEffect(() => {
-    localStorage.setItem('stockeasy_completed_quizzes', JSON.stringify(completedQuizzes));
-  }, [completedQuizzes]);
-
-  useEffect(() => {
-    localStorage.setItem('stockeasy_quiz_scores', JSON.stringify(quizScores));
-  }, [quizScores]);
-
-  useEffect(() => {
-    localStorage.setItem('stockeasy_final_assessment_passed', JSON.stringify(finalAssessmentPassed));
-  }, [finalAssessmentPassed]);
+    const fetchProgress = async () => {
+      try {
+        const token = localStorage.getItem("trado_token");
+        const res = await fetch("/learning/progress", {
+          headers: {
+            ...(token ? { "Authorization": `Bearer ${token}` } : {}),
+          }
+        });
+        if (res.ok) {
+          const result = await res.json();
+          if (result.success && result.data) {
+            setCompletedLessons(result.data.completedLessons || []);
+            setCompletedQuizzes(result.data.completedQuizzes || []);
+            setQuizScores(result.data.quizScores || {});
+            setFinalAssessmentPassed(result.data.finalAssessmentPassed || false);
+          }
+        }
+      } catch (e) {
+        console.error("Failed to load learning progress:", e);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchProgress();
+  }, []);
 
   // ── VIEW STATES ──
   // 'roadmap' | 'lesson' | 'quiz' | 'final-assessment' | 'graduation'
@@ -799,10 +795,24 @@ export const LearningCenterView: React.FC = () => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  const handleMarkComplete = (lessonId: string) => {
+  const handleMarkComplete = async (lessonId: string) => {
     if (!completedLessons.includes(lessonId)) {
       setCompletedLessons((prev) => [...prev, lessonId]);
       triggerCelebration("Lesson Completed!", `"${activeLesson?.title}" study verified.`);
+
+      try {
+        const token = localStorage.getItem("trado_token");
+        await fetch("/learning/lesson", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...(token ? { "Authorization": `Bearer ${token}` } : {}),
+          },
+          body: JSON.stringify({ lessonId })
+        });
+      } catch (e) {
+        console.error("Failed to save lesson completion:", e);
+      }
     }
   };
 
@@ -847,7 +857,7 @@ export const LearningCenterView: React.FC = () => {
     }
   };
 
-  const handleNextQuizQuestion = () => {
+  const handleNextQuizQuestion = async () => {
     if (!activeModule || shuffledQuizQuestions.length === 0) return;
     if (currentQuestionIdx < shuffledQuizQuestions.length - 1) {
       setCurrentQuestionIdx((prev) => prev + 1);
@@ -862,7 +872,7 @@ export const LearningCenterView: React.FC = () => {
       if (quizCorrectCount > currentHighestScore) {
         setQuizScores((prev) => ({ ...prev, [activeModule.id]: quizCorrectCount }));
       }
-
+ 
       if (passed && !completedQuizzes.includes(activeModule.id)) {
         setCompletedQuizzes((prev) => [...prev, activeModule.id]);
         triggerCelebration("Module Quiz Passed!", `Module ${activeModule.number} Mastered!`);
@@ -870,6 +880,25 @@ export const LearningCenterView: React.FC = () => {
       
       // Moving index beyond count renders the results summary card
       setCurrentQuestionIdx((prev) => prev + 1);
+ 
+      // Persist quiz result to database
+      try {
+        const token = localStorage.getItem("trado_token");
+        await fetch("/learning/quiz", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...(token ? { "Authorization": `Bearer ${token}` } : {}),
+          },
+          body: JSON.stringify({
+            moduleId: activeModule.id,
+            score: quizCorrectCount,
+            questionsCount: shuffledQuizQuestions.length
+          })
+        });
+      } catch (e) {
+        console.error("Failed to save quiz score:", e);
+      }
     }
   };
 
@@ -895,7 +924,7 @@ export const LearningCenterView: React.FC = () => {
     }
   };
 
-  const handleNextFinalQuestion = () => {
+  const handleNextFinalQuestion = async () => {
     if (shuffledFinalQuestions.length === 0) return;
     if (finalQuestionIdx < shuffledFinalQuestions.length - 1) {
       setFinalQuestionIdx((prev) => prev + 1);
@@ -908,6 +937,18 @@ export const LearningCenterView: React.FC = () => {
         setFinalAssessmentPassed(true);
         triggerCelebration("Certified Financial Master!", "Academy Course Graduated! 🎓");
         setStep('graduation');
+ 
+        try {
+          const token = localStorage.getItem("trado_token");
+          await fetch("/learning/final-assessment", {
+            method: "POST",
+            headers: {
+              ...(token ? { "Authorization": `Bearer ${token}` } : {}),
+            }
+          });
+        } catch (e) {
+          console.error("Failed to save final assessment completion:", e);
+        }
       } else {
         setFinalQuestionIdx((prev) => prev + 1);
       }
@@ -926,6 +967,18 @@ export const LearningCenterView: React.FC = () => {
       default: return null;
     }
   };
+
+  if (loading) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[60vh] space-y-4">
+        <div className="relative w-12 h-12">
+          <div className="absolute inset-0 rounded-full border-2 border-indigo-500/10 border-t-indigo-500 animate-spin"></div>
+          <GraduationCap className="absolute inset-0 m-auto h-5 w-5 text-indigo-400 animate-pulse" />
+        </div>
+        <div className="text-gray-400 text-xs font-mono animate-pulse">Loading academy curriculum progress...</div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6 p-6 lg:p-8 max-w-7xl mx-auto text-gray-200 relative min-h-screen">

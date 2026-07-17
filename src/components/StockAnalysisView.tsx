@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useApp } from '../AppContext';
 import { Stock } from '../types';
 import { 
@@ -34,7 +34,83 @@ export const StockAnalysisView: React.FC = () => {
   const [tradeQty, setTradeQty] = useState<number>(10);
   const [tradeMessage, setTradeMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
 
+  // Graph state
+  const [graphMode, setGraphMode] = useState<'7days' | 'live'>('7days');
+  const [activeHistory, setActiveHistory] = useState<any[]>([]);
+  const [marketState, setMarketState] = useState<string>('CLOSED');
+  const [livePoints, setLivePoints] = useState<Array<{ time: string; price: number }>>([]);
+  const [historyLoading, setHistoryLoading] = useState<boolean>(false);
+
+  const lastSymbolRef = useRef<string | null>(null);
+  const lastAppendedPriceRef = useRef<number | null>(null);
+  const lastAppendedTimeRef = useRef<number | null>(null);
+
   const selectedStock = stocks.find((s) => s.id === selectedStockId);
+
+  // Reset graph mode to 7days when changing stock
+  useEffect(() => {
+    setGraphMode('7days');
+  }, [selectedStockId]);
+
+  // Fetch 7 Days Historical Data ONLY ONCE when stock changes
+  useEffect(() => {
+    if (!selectedStockId) {
+      setActiveHistory([]);
+      setMarketState('CLOSED');
+      return;
+    }
+
+    const fetchHistory = async () => {
+      setHistoryLoading(true);
+      try {
+        const response = await fetch(`/api/stocks/${selectedStockId}/history`);
+        if (response.ok) {
+          const data = await response.json();
+          setActiveHistory(data.quotes || []);
+          setMarketState(data.marketState || 'CLOSED');
+        }
+      } catch (err) {
+        console.error("Failed to fetch history:", err);
+      } finally {
+        setHistoryLoading(false);
+      }
+    };
+
+    fetchHistory();
+  }, [selectedStockId]);
+
+  // Append live market points when updater pushes updates every 30s
+  useEffect(() => {
+    if (!selectedStock) {
+      setLivePoints([]);
+      lastAppendedPriceRef.current = null;
+      lastAppendedTimeRef.current = null;
+      lastSymbolRef.current = null;
+      return;
+    }
+
+    // Reset live points if symbol changes
+    if (lastSymbolRef.current !== selectedStock.symbol) {
+      lastSymbolRef.current = selectedStock.symbol;
+      const now = new Date();
+      const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      setLivePoints([{ time: timeStr, price: selectedStock.price }]);
+      lastAppendedPriceRef.current = selectedStock.price;
+      lastAppendedTimeRef.current = now.getTime();
+      return;
+    }
+
+    // Append new tick if 25+ seconds have elapsed (context updates every 30s)
+    const now = new Date();
+    const timeElapsed = lastAppendedTimeRef.current ? (now.getTime() - lastAppendedTimeRef.current) : Infinity;
+
+    if (timeElapsed >= 25000) {
+      const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      setLivePoints(prev => [...prev, { time: timeStr, price: selectedStock.price }]);
+      lastAppendedPriceRef.current = selectedStock.price;
+      lastAppendedTimeRef.current = now.getTime();
+    }
+  }, [selectedStock]);
 
   // Get unique sectors
   const sectors = ['All', ...Array.from(new Set(stocks.map((s) => s.sector)))];
@@ -125,27 +201,128 @@ export const StockAnalysisView: React.FC = () => {
 
   // Render larger interactive chart for detail view
   const renderDetailChart = (stock: Stock) => {
-    const min = Math.min(...stock.history);
-    const max = Math.max(...stock.history);
-    const range = max - min || 1;
-    const width = 500;
-    const height = 180;
-    
-    const points = stock.history.map((val, idx) => {
-      const x = (idx / (stock.history.length - 1)) * width;
-      const y = height - ((val - min) / range) * (height - 24) - 12;
-      return `${x},${y}`;
-    }).join(' ');
+    const chartWidth = 440;
+    const chartHeight = 180;
 
-    const isProfit = stock.change >= 0;
-    const strokeColor = isProfit ? '#10b981' : 'var(--color-trado-danger)'; // emerald-500 or trado-danger
+    // Determine dataset based on current mode
+    const dataPoints = graphMode === '7days'
+      ? activeHistory.filter(q => q && typeof q.close === 'number').map(q => ({
+          label: new Date(q.date).toLocaleDateString([], { month: 'short', day: 'numeric' }),
+          value: q.close
+        }))
+      : livePoints.map(p => ({
+          label: p.time,
+          value: p.price
+        }));
+
+    if (historyLoading && graphMode === '7days') {
+      return (
+        <div className="p-6 rounded-2xl bg-white/[0.01] border border-white/[0.04] h-[260px] flex flex-col items-center justify-center gap-3">
+          <div className="w-8 h-8 rounded-full border-2 border-trado-accent border-t-transparent animate-spin"></div>
+          <span className="text-xs font-mono text-gray-500">Fetching historical Nifty data...</span>
+        </div>
+      );
+    }
+
+    if (dataPoints.length === 0) {
+      return (
+        <div className="p-6 rounded-2xl bg-white/[0.01] border border-white/[0.04] h-[260px] flex flex-col items-center justify-center">
+          <span className="text-xs font-mono text-gray-500">
+            {graphMode === '7days' ? 'No historical data available.' : 'Waiting for live ticks (updates every 30s)...'}
+          </span>
+        </div>
+      );
+    }
+
+    const prices = dataPoints.map(d => d.value);
+    const min = Math.min(...prices);
+    const max = Math.max(...prices);
+    const range = max - min || 1;
+    const padding = range * 0.08;
+    const adjustedMin = min - padding;
+    const adjustedMax = max + padding;
+    const adjustedRange = adjustedMax - adjustedMin || 1;
+
+    let points = '';
+    if (dataPoints.length > 1) {
+      points = dataPoints.map((pt, idx) => {
+        const x = (idx / (dataPoints.length - 1)) * chartWidth;
+        const y = chartHeight - ((pt.value - adjustedMin) / adjustedRange) * (chartHeight - 32) - 16;
+        return `${x},${y}`;
+      }).join(' ');
+    } else {
+      // 1 point case
+      points = `0,${chartHeight / 2} ${chartWidth},${chartHeight / 2}`;
+    }
+
+    const isProfit = dataPoints.length > 1
+      ? (dataPoints[dataPoints.length - 1].value >= dataPoints[0].value)
+      : (stock.change >= 0);
+    const strokeColor = isProfit ? '#3ecf8e' : '#f0576b';
+
+    const fillPath = dataPoints.length > 1
+      ? `M 0,${chartHeight} L ${points} L ${chartWidth},${chartHeight} Z`
+      : '';
+
+    const gridLinesCount = 3;
+    const gridLines = Array.from({ length: gridLinesCount }, (_, i) => {
+      const price = adjustedMax - (adjustedRange / (gridLinesCount - 1)) * i;
+      const y = chartHeight - ((price - adjustedMin) / adjustedRange) * (chartHeight - 32) - 16;
+      return { price, y };
+    });
 
     return (
       <div className="p-5 rounded-2xl bg-white/[0.01] border border-white/[0.04]">
-        <div className="flex justify-between items-center mb-4">
-          <span className="text-xs font-mono text-gray-500 uppercase tracking-wider">7-Day Technical Trend</span>
-          <span className="text-xs font-mono font-medium text-gray-400">Past performance • Simulated ticks</span>
+        {/* Graph Mode Selection Tabs */}
+        <div className="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-3 mb-6">
+          <div className="flex gap-2 p-1 rounded-xl bg-white/[0.02] border border-white/[0.04] self-start">
+            <button
+              onClick={() => setGraphMode('7days')}
+              className={`px-4 py-2 rounded-lg text-xs font-mono font-medium transition duration-200 cursor-pointer ${
+                graphMode === '7days'
+                  ? 'bg-trado-accent text-white shadow-[0_0_12px_rgba(59,130,246,0.25)]'
+                  : 'text-gray-400 hover:text-white'
+              }`}
+            >
+              7 Days
+            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setGraphMode('live')}
+                className={`px-4 py-2 rounded-lg text-xs font-mono font-medium transition duration-200 cursor-pointer ${
+                  graphMode === 'live'
+                    ? 'bg-trado-accent text-white shadow-[0_0_12px_rgba(59,130,246,0.25)]'
+                    : 'text-gray-400 hover:text-white'
+                }`}
+              >
+                Live Market
+              </button>
+              
+              {/* Visual Live Status Indicator */}
+              <span className="flex items-center gap-1.5 text-[10px] font-mono mr-2 select-none">
+                {marketState === 'REGULAR' ? (
+                  <>
+                    <span className="relative flex h-2 w-2">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                    </span>
+                    <span className="text-emerald-400 font-semibold uppercase tracking-wider">Live</span>
+                  </>
+                ) : (
+                  <>
+                    <span className="h-2 w-2 rounded-full bg-rose-500"></span>
+                    <span className="text-rose-400 font-semibold uppercase tracking-wider">Market Closed</span>
+                  </>
+                )}
+              </span>
+            </div>
+          </div>
+          <div className="text-right text-[11px] font-mono text-gray-500">
+            {graphMode === '7days' ? 'Static 7-Day Yahoo Finance feed' : `Real-time updates (${livePoints.length} ticks)`}
+          </div>
         </div>
+
+        {/* SVG Chart */}
         <div className="h-[180px] w-full relative">
           <svg className="w-full h-full" viewBox="0 0 500 180" preserveAspectRatio="none">
             <defs>
@@ -154,47 +331,126 @@ export const StockAnalysisView: React.FC = () => {
                 <stop offset="100%" stopColor={strokeColor} stopOpacity="0"/>
               </linearGradient>
             </defs>
-            <path
-              d={`M 0,180 L ${points} L 500,180 Z`}
-              fill={`url(#gradient-${stock.symbol})`}
-            />
+
+            {/* Horizontal Gridlines & Price Labels */}
+            {gridLines.map((line, idx) => (
+              <g key={idx}>
+                <line
+                  x1="0"
+                  y1={line.y}
+                  x2={chartWidth}
+                  y2={line.y}
+                  stroke="rgba(255, 255, 255, 0.05)"
+                  strokeWidth="1"
+                  strokeDasharray="4 4"
+                />
+                <text
+                  x={chartWidth + 10}
+                  y={line.y + 3}
+                  fill="#6b7280"
+                  fontSize="9"
+                  fontFamily="monospace"
+                  textAnchor="start"
+                >
+                  ₹{line.price.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                </text>
+              </g>
+            ))}
+
+            {/* Area Fill */}
+            {fillPath && (
+              <path
+                d={fillPath}
+                fill={`url(#gradient-${stock.symbol})`}
+              />
+            )}
+
+            {/* Line Path */}
             <polyline
               fill="none"
               stroke={strokeColor}
               strokeWidth="2.5"
               points={points}
             />
-            {stock.history.map((val, idx) => {
-              const x = (idx / (stock.history.length - 1)) * width;
-              const y = height - ((val - min) / range) * (height - 24) - 12;
+
+            {/* Interactivity & Data Points */}
+            {dataPoints.map((pt, idx) => {
+              const x = dataPoints.length > 1
+                ? (idx / (dataPoints.length - 1)) * chartWidth
+                : chartWidth / 2;
+              const y = dataPoints.length > 1
+                ? chartHeight - ((pt.value - adjustedMin) / adjustedRange) * (chartHeight - 32) - 16
+                : chartHeight / 2;
+
               return (
                 <g key={idx} className="group/dot">
+                  {/* Vertical Hover crosshair */}
+                  <line
+                    x1={x}
+                    y1="0"
+                    x2={x}
+                    y2={chartHeight}
+                    stroke="rgba(255, 255, 255, 0.1)"
+                    strokeWidth="1"
+                    strokeDasharray="2 2"
+                    className="opacity-0 group-hover/dot:opacity-100 transition duration-200"
+                  />
+                  {/* Glowing dot outer */}
+                  <circle
+                    cx={x}
+                    cy={y}
+                    r="7"
+                    fill={strokeColor}
+                    opacity="0"
+                    className="group-hover/dot:opacity-20 transition duration-200"
+                  />
+                  {/* Data dot inner */}
                   <circle
                     cx={x}
                     cy={y}
                     r="4"
                     fill={strokeColor}
-                    className="cursor-pointer hover:r-6 transition-all"
+                    stroke="#1e293b"
+                    strokeWidth="1.5"
+                    className="cursor-pointer transition duration-200"
                   />
-                  <text
-                    x={x}
-                    y={y - 10}
-                    textAnchor="middle"
-                    fill="#9ca3af"
-                    fontSize="9"
-                    fontFamily="monospace"
-                    className="opacity-0 group-hover/dot:opacity-100 transition duration-200"
-                  >
-                    ₹{val.toFixed(0)}
-                  </text>
+                  {/* Hover price tooltip */}
+                  <g className="opacity-0 group-hover/dot:opacity-100 transition duration-200 pointer-events-none">
+                    <rect
+                      x={x - 45}
+                      y={y - 32}
+                      width="90"
+                      height="22"
+                      rx="4"
+                      fill="#0d1117"
+                      stroke={strokeColor}
+                      strokeWidth="1"
+                    />
+                    <text
+                      x={x}
+                      y={y - 18}
+                      textAnchor="middle"
+                      fill="#ffffff"
+                      fontSize="9.5"
+                      fontWeight="bold"
+                      fontFamily="monospace"
+                    >
+                      ₹{pt.value.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 2 })}
+                    </text>
+                  </g>
                 </g>
               );
             })}
           </svg>
         </div>
-        <div className="flex justify-between text-[10px] text-gray-500 font-mono mt-2 border-t border-white/[0.03] pt-2">
-          <span>7 Sessions Ago</span>
-          <span>Active Feed</span>
+
+        {/* X-axis labels */}
+        <div className="flex justify-between text-[10px] text-gray-500 font-mono mt-2 border-t border-white/[0.03] pt-2" style={{ marginRight: '60px' }}>
+          <span>{dataPoints[0].label}</span>
+          {dataPoints.length > 2 && (
+            <span>{dataPoints[Math.floor(dataPoints.length / 2)].label}</span>
+          )}
+          <span>{dataPoints[dataPoints.length - 1].label}</span>
         </div>
       </div>
     );

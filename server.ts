@@ -4,7 +4,7 @@ import dotenv from 'dotenv';
 import { createServer as createViteServer } from 'vite';
 import { GoogleGenAI, Type } from '@google/genai';
 import { exec } from 'child_process';
-import { getStock, getMultipleStocks } from "./server/services/marketService";
+import { getStock, getMultipleStocks, getStockHistory } from "./server/services/marketService";
 import backendApp from './backend/app';
 
 dotenv.config();
@@ -717,6 +717,23 @@ app.get("/api/nifty25", async (req, res) => {
   } catch (err: any) {
     console.error(err);
 
+    res.status(500).json({
+      error: err.message,
+    });
+  }
+});
+
+app.get("/api/stocks/:symbol/history", async (req, res) => {
+  try {
+    const symbol = req.params.symbol;
+    const history = await getStockHistory(symbol);
+    const quote = await getStock(symbol);
+    res.json({
+      quotes: history,
+      marketState: quote?.marketState || "CLOSED"
+    });
+  } catch (err: any) {
+    console.error(`Failed to fetch history for ${req.params.symbol}:`, err);
     res.status(500).json({
       error: err.message,
     });

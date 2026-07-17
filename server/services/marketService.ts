@@ -48,3 +48,34 @@ export async function getMultipleStocks(symbols: string[]) {
 
   return stocks.filter(Boolean);
 }
+
+export async function getStockHistory(symbol: string) {
+  try {
+    const today = new Date();
+    const fourteenDaysAgo = new Date();
+    fourteenDaysAgo.setDate(today.getDate() - 14);
+
+    const result = await yahooFinance.chart(symbol, {
+      period1: fourteenDaysAgo,
+      period2: today,
+      interval: "1d",
+    });
+
+    const quotes = result.quotes || [];
+    // slice the last 7 trading days
+    const last7Quotes = quotes.slice(-7);
+
+    return last7Quotes.map((q: any) => ({
+      date: q.date,
+      open: q.open,
+      high: q.high,
+      low: q.low,
+      close: q.close,
+      adjclose: q.adjclose,
+      volume: q.volume,
+    }));
+  } catch (err) {
+    console.error(`Failed to fetch history for ${symbol}:`, err);
+    throw err;
+  }
+}

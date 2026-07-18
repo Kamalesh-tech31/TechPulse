@@ -105,6 +105,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return saved ? JSON.parse(saved) : INITIAL_STOCKS;
   });
 
+  const realHistoriesRef = useRef<Record<string, number[]>>({});
+  const fetchedHistoriesRef = useRef<Set<string>>(new Set());
+
   // ── DB-backed portfolio state ───────────────────────────────
   const [holdings, setHoldings] = useState<GroupedHolding[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
@@ -348,7 +351,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           low52: stock.low,
           sector: "NSE",
           description: stock.name,
-          history: [stock.low, stock.previousClose, stock.price, stock.high],
+          history: realHistoriesRef.current[stock.symbol] || [stock.low, stock.previousClose, stock.price, stock.high],
         }));
 
         setStocks(formattedStocks);
@@ -361,6 +364,52 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const interval = setInterval(loadStocks, 30000);
     return () => clearInterval(interval);
   }, []);
+
+  // Effect to load 7-day historical prices for each stock once retrieved
+  useEffect(() => {
+    if (stocks.length === 0) return;
+
+    const fetchHistoryForStock = async (stockId: string) => {
+      try {
+        const response = await fetch(`/api/stocks/${stockId}/history`);
+        if (response.ok) {
+          const data = await response.json();
+          const quotes = data.quotes || [];
+          const closePrices = quotes
+            .filter((q: any) => q && typeof q.close === 'number')
+            .map((q: any) => q.close);
+          if (closePrices.length > 0) {
+            realHistoriesRef.current[stockId] = closePrices;
+            // Update the history in stocks state in-place
+            setStocks(prevStocks =>
+              prevStocks.map(s =>
+                s.id === stockId ? { ...s, history: closePrices } : s
+              )
+            );
+          }
+        }
+      } catch (err) {
+        console.error(`Failed to fetch history for ${stockId}:`, err);
+      }
+    };
+
+    stocks.forEach(stock => {
+      const cached = realHistoriesRef.current[stock.id];
+      if (cached) {
+        // If we have cached real history but the stock object doesn't have it, update it
+        if (stock.history !== cached) {
+          setStocks(prevStocks =>
+            prevStocks.map(s =>
+              s.id === stock.id ? { ...s, history: cached } : s
+            )
+          );
+        }
+      } else if (!fetchedHistoriesRef.current.has(stock.id)) {
+        fetchedHistoriesRef.current.add(stock.id);
+        fetchHistoryForStock(stock.id);
+      }
+    });
+  }, [stocks]);
 
   // ── When stocks update, refresh portfolio P/L in-place (no round-trip) ──
   useEffect(() => {

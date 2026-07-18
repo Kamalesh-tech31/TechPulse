@@ -6,6 +6,12 @@ import {
   Transaction,
   UserProfile,
   OnboardingPreferences,
+  FullPortfolioAnalysis,
+  RiskProfile,
+  Recommendation,
+  PortfolioReport,
+  ChatMessage,
+  ChatSession,
 } from "./types";
 import { INITIAL_STOCKS } from "./mockData";
 import { supabase } from "./supabase";
@@ -51,6 +57,26 @@ interface AppContextType {
   setActiveView: (view: string) => void;
   setSelectedStockId: (id: string | null) => void;
   refreshPortfolio: () => Promise<void>;
+
+  // AI Assistant Subsystem State
+  aiState: {
+    analysis: FullPortfolioAnalysis | null;
+    riskProfile: RiskProfile | null;
+    recommendations: Recommendation[];
+    report: PortfolioReport | null;
+    hasAnalyzed: boolean;
+  };
+  setAiState: React.Dispatch<React.SetStateAction<{
+    analysis: FullPortfolioAnalysis | null;
+    riskProfile: RiskProfile | null;
+    recommendations: Recommendation[];
+    report: PortfolioReport | null;
+    hasAnalyzed: boolean;
+  }>>;
+  aiChatMessages: ChatMessage[];
+  setAiChatMessages: React.Dispatch<React.SetStateAction<ChatMessage[]>>;
+  aiChatSessions: ChatSession[];
+  setAiChatSessions: React.Dispatch<React.SetStateAction<ChatSession[]>>;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -83,6 +109,70 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [holdings, setHoldings] = useState<GroupedHolding[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [portfolioLoading, setPortfolioLoading] = useState(false);
+
+  const [aiState, setAiState] = useState<{
+    analysis: FullPortfolioAnalysis | null;
+    riskProfile: RiskProfile | null;
+    recommendations: Recommendation[];
+    report: PortfolioReport | null;
+    hasAnalyzed: boolean;
+  }>({
+    analysis: null,
+    riskProfile: null,
+    recommendations: [],
+    report: null,
+    hasAnalyzed: false
+  });
+
+  const [aiChatMessages, setAiChatMessages] = useState<ChatMessage[]>([]);
+  const [aiChatSessions, setAiChatSessions] = useState<ChatSession[]>([]);
+
+  // Load user-specific AI data when user logs in/out or reloads
+  useEffect(() => {
+    const fetchAIData = async () => {
+      const token = getToken();
+      if (!user || !token) {
+        setAiState({ analysis: null, riskProfile: null, recommendations: [], report: null, hasAnalyzed: false });
+        setAiChatMessages([]);
+        setAiChatSessions([]);
+        return;
+      }
+
+      try {
+        // 1. Fetch sessions from Supabase via backend
+        const sessionsRes = await fetch('/api/ai/sessions', {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        if (sessionsRes.ok) {
+          const res = await sessionsRes.json();
+          if (res.success && res.data) {
+            setAiChatSessions(res.data);
+          }
+        }
+
+        // 2. Fetch latest report from Supabase via backend
+        const reportRes = await fetch('/api/ai/latest-report', {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        if (reportRes.ok) {
+          const res = await reportRes.json();
+          if (res.success && res.data) {
+            setAiState({
+              analysis: res.data.analysis,
+              riskProfile: res.data.riskProfile,
+              recommendations: res.data.recommendations || [],
+              report: res.data.report,
+              hasAnalyzed: true
+            });
+          }
+        }
+      } catch (err) {
+        console.error('Failed to load AI assistant data:', err);
+      }
+    };
+
+    fetchAIData();
+  }, [user]);
 
   useEffect(() => {
     console.log("HOLDINGS STATE CHANGED:", holdings);
@@ -643,6 +733,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         completeOnboarding, buyStock, sellStock, logout, resetAllData,
         addMoney, resetMoney, setActiveView, setSelectedStockId,
         refreshPortfolio,
+        aiState, setAiState,
+        aiChatMessages, setAiChatMessages,
+        aiChatSessions, setAiChatSessions,
       }}
     >
       {children}

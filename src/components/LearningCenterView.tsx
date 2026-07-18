@@ -777,6 +777,9 @@ export const LearningCenterView: React.FC = () => {
 
   // ── ROUTING REDIRECT FOR ASK A DOUBT (AI Insights) ──
   const handleAskDoubt = () => {
+    // Store navigation flag in sessionStorage so AIAssistantView knows to open in chat tab
+    sessionStorage.setItem('ai_assistant_default_tab', 'chat');
+    
     // Locate the sidebar option for AI Insights and trigger its exact navigation mechanism
     const sidebarButton = document.querySelector('button[aria-label="AI Insights"]') as HTMLButtonElement | null;
     if (sidebarButton) {

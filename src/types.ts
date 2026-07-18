@@ -143,3 +143,162 @@ export interface PortfolioAnalysis {
   recommendations: string[];
   explanation: string;
 }
+
+// ─── NEW AI SUBSYSTEM TYPES ───────────────────────────────────────────────────
+
+export interface MetricCard {
+  key: string;
+  label: string;
+  value: string | number;
+  raw: number;
+  unit: string;
+  definition: string;
+  formula: string;
+  interpretation: string;
+  importance: string;
+  sentiment: 'positive' | 'negative' | 'neutral' | 'warning';
+  score?: number;
+}
+
+export interface SectorAllocation {
+  sector: string;
+  value: number;
+  percentage: number;
+  holdingCount: number;
+  color: string;
+}
+
+export interface FullPortfolioAnalysis {
+  totalPortfolioValue: number;
+  totalInvested: number;
+  totalProfitLoss: number;
+  totalProfitLossPct: number;
+  cashBalance: number;
+  totalNetWorth: number;
+  portfolioReturn: number;
+  dailyReturn: number;
+  weeklyReturn: number;
+  monthlyReturn: number;
+  annualizedReturn: number;
+  expectedCAGR: number;
+  portfolioBeta: number;
+  portfolioVolatility: number;
+  standardDeviation: number;
+  maxDrawdown: number;
+  valueAtRisk: number;
+  sharpeRatio: number;
+  sortinoRatio: number;
+  treynorRatio: number;
+  diversificationScore: number;
+  concentrationRisk: number;
+  sectorConcentration: number;
+  largestHoldingPct: number;
+  herfindahlIndex: number;
+  riskScore: number;
+  healthScore: number;
+  liquidityScore: number;
+  growthScore: number;
+  valueScore: number;
+  incomeScore: number;
+  performanceScore: number;
+  confidenceScore: number;
+  sectorAllocation: SectorAllocation[];
+  topPerforming: { symbol: string; gain: number; value: number }[];
+  worstPerforming: { symbol: string; loss: number; value: number }[];
+  capitalAllocation: { symbol: string; percentage: number; value: number }[];
+  riskLabel: string;
+  riskCategory: string;
+  metrics: MetricCard[];
+}
+
+export interface RiskFactor {
+  name: string;
+  weight: number;
+  rawScore: number;
+  weightedScore: number;
+  description: string;
+  detail: string;
+}
+
+export interface RiskProfile {
+  score: number;
+  label: string;
+  tier: 1 | 2 | 3 | 4 | 5;
+  color: string;
+  emoji: string;
+  factors: RiskFactor[];
+  summary: string;
+  warnings: string[];
+  positives: string[];
+}
+
+export interface Recommendation {
+  id: string;
+  title: string;
+  priority: 'critical' | 'high' | 'medium' | 'low';
+  category: string;
+  issue: string;
+  action: string;
+  reason: string;
+  supportingData: string;
+  advantages: string[];
+  disadvantages: string[];
+  expectedImpact: string;
+  icon: string;
+}
+
+export interface PortfolioReport {
+  generatedAt: string;
+  executiveSummary: string;
+  portfolioOverview: string;
+  performanceAnalysis: string;
+  riskAnalysis: string;
+  diversificationAnalysis: string;
+  sectorAnalysis: string;
+  strengths: string[];
+  weaknesses: string[];
+  recommendations: string;
+  investmentOpportunities: string;
+  portfolioHealthScore: string;
+  educationalNotes: string;
+  beginnerTips: string[];
+  proTips: string[];
+  monitoringSuggestions: string[];
+  disclaimer: string;
+  rawMetrics: {
+    riskScore: number;
+    healthScore: number;
+    diversificationScore: number;
+    sharpeRatio: number;
+    portfolioBeta: number;
+    maxDrawdown: number;
+    totalProfitLossPct: number;
+    portfolioReturn: number;
+    sectorConcentration: number;
+    volatility: number;
+  };
+}
+
+export interface ChatMessage {
+  role: 'user' | 'assistant' | 'system';
+  content: string;
+  timestamp: string;
+  sources?: string[];
+}
+
+export interface ChatSession {
+  id: string;
+  title: string;
+  date: string;
+  messages: ChatMessage[];
+}
+
+export interface AIAnalysisResult {
+  analysis: FullPortfolioAnalysis;
+  riskProfile: RiskProfile;
+  recommendations: Recommendation[];
+}
+
+export interface AIReportResult extends AIAnalysisResult {
+  report: PortfolioReport;
+}

@@ -1,13 +1,11 @@
+import 'dotenv/config';
 import express from 'express';
 import path from 'path';
-import dotenv from 'dotenv';
 import { createServer as createViteServer } from 'vite';
 import { GoogleGenAI, Type } from '@google/genai';
 import { exec } from 'child_process';
 import { getStock, getMultipleStocks, getStockHistory } from "./server/services/marketService";
 import backendApp from './backend/app';
-
-dotenv.config();
 
 const app = express();
 const PORT = 3000;
@@ -758,6 +756,10 @@ async function startServer() {
   app.listen(PORT, '0.0.0.0', () => {
     const url = `http://localhost:${PORT}`;
     console.log(`[Trado Server] Running on ${url}`);
+    console.log('--------------------------------------------------');
+    console.log(`Groq API Key Loaded: ${process.env.GROQ_API_KEY ? 'YES' : 'NO'}`);
+    console.log(`Groq Model: llama-3.3-70b-versatile`);
+    console.log('--------------------------------------------------');
 
     
 

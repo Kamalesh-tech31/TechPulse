@@ -7,6 +7,7 @@ import profileRoutes from './routes/profile.routes';
 import onboardingRoutes from './routes/onboarding.routes';
 import portfolioRoutes from './routes/portfolio.routes';
 import learningRoutes from './routes/learning.routes';
+import aiRoutes from './routes/ai.routes';
 
 const app = express();
 
@@ -38,6 +39,7 @@ app.use('/profile', profileRoutes);
 app.use('/onboarding', onboardingRoutes);
 app.use("/portfolio", portfolioRoutes);// ← persistent portfolio endpoints
 app.use('/learning', learningRoutes);
+app.use('/api/ai', aiRoutes);
 
 app.get("/test", (req, res) => {
   res.send("Backend works");

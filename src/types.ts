@@ -63,10 +63,11 @@ export interface DbTransaction {
   symbol: string;
   company_name: string;
   exchange: string;
-  type: 'BUY' | 'SELL';
+  type: 'BUY' | 'SELL' | 'CREDIT';
   quantity: number;
   price: number;
   total_amount: number;
+  remaining_balance: number;
   transaction_time: string;
   created_at: string;
 }
@@ -74,7 +75,7 @@ export interface DbTransaction {
 /** Legacy local transaction type — kept for backward compat during UI render */
 export interface Transaction {
   id: string;
-  type: 'BUY' | 'SELL';
+  type: 'BUY' | 'SELL' | 'CREDIT';
   stockId: string;
   symbol: string;
   name: string;
@@ -113,6 +114,10 @@ export interface UserProfile {
   onboardingCompleted: boolean;
   onboarding?: OnboardingPreferences;
   googlePicture?: string;
+  // Wallet credit fields
+  weeklyCreditLimit?: number;
+  weeklyCreditRemaining?: number;
+  lastWeeklyReset?: string;
 }
 
 export interface QuizQuestion {

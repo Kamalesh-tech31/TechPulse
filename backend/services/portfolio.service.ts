@@ -9,6 +9,10 @@ export interface WalletRow {
   available_cash: number;
   portfolio_value: number;
   profit_loss: number;
+  initial_capital: number;
+  weekly_credit_limit: number;
+  weekly_credit_remaining: number;
+  last_weekly_reset: string;
   updated_at: string;
 }
 
@@ -31,6 +35,10 @@ export async function getOrCreateWallet(userId: string): Promise<WalletRow> {
       available_cash: 1000000.00,
       portfolio_value: 0.00,
       profit_loss: 0.00,
+      initial_capital: 1000000.00,
+      weekly_credit_limit: 100000.00,
+      weekly_credit_remaining: 100000.00,
+      last_weekly_reset: new Date().toISOString(),
     })
     .select('*')
     .single();
@@ -67,6 +75,21 @@ export async function updateWallet(
     });
 
   if (error) throw new Error('Failed to update wallet: ' + error.message);
+}
+
+export async function updateWalletFull(
+  userId: string,
+  fields: Partial<Omit<WalletRow, 'user_id'>>
+): Promise<WalletRow> {
+  const { data, error } = await supabase
+    .from('wallet')
+    .update({ ...fields, updated_at: new Date().toISOString() })
+    .eq('user_id', userId)
+    .select('*')
+    .single();
+
+  if (error || !data) throw new Error('Failed to update wallet: ' + (error?.message || 'Unknown'));
+  return data as WalletRow;
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -175,10 +198,11 @@ export interface TransactionRow {
   symbol: string;
   company_name: string;
   exchange: string;
-  type: 'BUY' | 'SELL';
+  type: 'BUY' | 'SELL' | 'CREDIT';
   quantity: number;
   price: number;
   total_amount: number;
+  remaining_balance: number;
   transaction_time: string;
   created_at: string;
 }
@@ -188,10 +212,11 @@ export interface InsertTransactionInput {
   symbol: string;
   companyName: string;
   exchange: string;
-  type: 'BUY' | 'SELL';
+  type: 'BUY' | 'SELL' | 'CREDIT';
   quantity: number;
   price: number;
   totalAmount: number;
+  remainingBalance: number;
 }
 
 export async function insertTransaction(input: InsertTransactionInput): Promise<TransactionRow> {
@@ -206,6 +231,7 @@ export async function insertTransaction(input: InsertTransactionInput): Promise<
       quantity: input.quantity,
       price: Math.round(input.price * 100) / 100,
       total_amount: Math.round(input.totalAmount * 100) / 100,
+      remaining_balance: Math.round(input.remainingBalance * 100) / 100,
       transaction_time: new Date().toISOString(),
     })
     .select('*')

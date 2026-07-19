@@ -50,6 +50,8 @@ interface AppContextType {
   completeOnboarding: (prefs: OnboardingPreferences) => Promise<void>;
   buyStock: (stockId: string, quantity: number) => Promise<{ success: boolean; message: string }>;
   sellStock: (stockId: string, quantity: number) => Promise<{ success: boolean; message: string }>;
+  claimWeeklyCredit: (amount: number) => Promise<{ success: boolean; message: string }>;
+  deleteAccount: () => Promise<{ success: boolean; message: string }>;
   logout: () => Promise<void>;
   resetAllData: () => void;
   addMoney: (amount: number) => void;
@@ -291,7 +293,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           quantity: tx.quantity,
           price: Number(tx.price),
           totalAmount: Number(tx.total_amount),
-          remainingBalance: 0,
+          remainingBalance: Number(tx.remaining_balance ?? 0),
           timestamp: tx.transaction_time || tx.created_at,
         }));
 
@@ -307,7 +309,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
         if (wallet) {
           setUser((prev) =>
-            prev ? { ...prev, walletBalance: wallet.available_cash } : prev,
+            prev ? {
+              ...prev,
+              walletBalance: wallet.available_cash,
+              weeklyCreditLimit: wallet.weekly_credit_limit,
+              weeklyCreditRemaining: wallet.weekly_credit_remaining,
+              lastWeeklyReset: wallet.last_weekly_reset,
+            } : prev,
           );
         }
       }
@@ -772,6 +780,75 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const addMoney = (amount: number) => setUser(prev => prev ? { ...prev, walletBalance: prev.walletBalance + amount } : null);
   const resetMoney = () => setUser(prev => prev ? { ...prev, walletBalance: 1000000 } : null);
 
+  // ─────────────────────────────────────────────────────────────
+  //  Claim Weekly Credit — calls POST /portfolio/claim-credit
+  // ─────────────────────────────────────────────────────────────
+  const claimWeeklyCredit = async (amount: number): Promise<{ success: boolean; message: string }> => {
+    if (!user) return { success: false, message: 'Please sign in.' };
+    const token = getToken();
+    if (!token) return { success: false, message: 'Authentication required.' };
+
+    try {
+      const res = await fetch('/portfolio/claim-credit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ amount }),
+      });
+      const result = await res.json();
+      if (!res.ok || !result.success) {
+        return { success: false, message: result.message || 'Claim failed.' };
+      }
+      // Update wallet state immediately from response
+      setUser(prev => prev ? {
+        ...prev,
+        walletBalance: result.data.currentWallet,
+        weeklyCreditRemaining: result.data.weeklyCreditRemaining,
+        weeklyCreditLimit: result.data.weeklyCreditLimit,
+        lastWeeklyReset: result.data.lastWeeklyReset,
+      } : prev);
+      // Refresh full portfolio to sync transaction history
+      await refreshPortfolio();
+      return { success: true, message: result.message };
+    } catch (err: any) {
+      console.error('[Claim Credit] Error:', err);
+      return { success: false, message: 'Network error. Please try again.' };
+    }
+  };
+
+  // ─────────────────────────────────────────────────────────────
+  //  Delete Account — calls DELETE /auth/account
+  // ─────────────────────────────────────────────────────────────
+  const deleteAccount = async (): Promise<{ success: boolean; message: string }> => {
+    const token = getToken();
+    if (!token) return { success: false, message: 'Authentication required.' };
+
+    try {
+      const res = await fetch('/auth/account', {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const result = await res.json();
+      if (!res.ok || !result.success) {
+        return { success: false, message: result.message || 'Deletion failed.' };
+      }
+      // Clear all local state and redirect to landing
+      try {
+        await supabase.auth.signOut();
+      } catch {}
+      localStorage.removeItem('trado_token');
+      localStorage.removeItem('stockeasy_user');
+      localStorage.removeItem('stockeasy_stocks');
+      setUser(null);
+      setHoldings([]);
+      setTransactions([]);
+      setActiveView('landing');
+      return { success: true, message: result.message };
+    } catch (err: any) {
+      console.error('[Delete Account] Error:', err);
+      return { success: false, message: 'Network error. Please try again.' };
+    }
+  };
+
   return (
     <AppContext.Provider
       value={{
@@ -779,7 +856,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         isLoading, authLoading, isAuthInitialized, activeView,
         selectedStockId, portfolioLoading,
         registerUser, loginUser, loginWithGoogleUser, loginUserFromResponse,
-        completeOnboarding, buyStock, sellStock, logout, resetAllData,
+        completeOnboarding, buyStock, sellStock, claimWeeklyCredit, deleteAccount,
+        logout, resetAllData,
         addMoney, resetMoney, setActiveView, setSelectedStockId,
         refreshPortfolio,
         aiState, setAiState,

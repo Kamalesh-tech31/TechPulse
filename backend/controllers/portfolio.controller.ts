@@ -89,7 +89,7 @@ function groupHoldings(rows: HoldingRow[], livePrices: Record<string, number>): 
 
 export class PortfolioController {
   /**
-   * GET /api/dashboard
+   * GET /portfolio/dashboard
    * Returns wallet + grouped holdings + recent transactions
    */
   static async getDashboard(req: Request, res: Response) {
@@ -122,6 +122,10 @@ export class PortfolioController {
             available_cash: wallet.available_cash,
             portfolio_value: Math.round(portfolioValue * 100) / 100,
             profit_loss: Math.round(profitLoss * 100) / 100,
+            initial_capital: wallet.initial_capital ?? 1000000,
+            weekly_credit_limit: wallet.weekly_credit_limit ?? 100000,
+            weekly_credit_remaining: wallet.weekly_credit_remaining ?? 100000,
+            last_weekly_reset: wallet.last_weekly_reset,
           },
           holdings: grouped,
           transactions: txRows.slice(0, 50), // latest 50
@@ -134,7 +138,7 @@ export class PortfolioController {
   }
 
   /**
-   * GET /api/holdings
+   * GET /portfolio/holdings
    * Returns grouped holdings with live prices injected
    */
   static async getHoldings(req: Request, res: Response) {
@@ -157,7 +161,7 @@ export class PortfolioController {
   }
 
   /**
-   * GET /api/transactions
+   * GET /portfolio/transactions
    */
   static async getTransactions(req: Request, res: Response) {
     try {
@@ -171,7 +175,7 @@ export class PortfolioController {
   }
 
   /**
-   * POST /api/buy
+   * POST /portfolio/buy
    * Body: { symbol, companyName, exchange, quantity, livePrice }
    */
   static async buyStock(req: Request, res: Response) {
@@ -201,7 +205,10 @@ export class PortfolioController {
         });
       }
 
-      // 2. Insert ONE holding row (buy_price never changes)
+      // 2. Compute new cash BEFORE inserting transaction (so remaining_balance is accurate)
+      const newCash = Math.round((wallet.available_cash - totalCost) * 100) / 100;
+
+      // 3. Insert ONE holding row (buy_price never changes)
       await insertHolding({
         userId,
         symbol,
@@ -211,7 +218,7 @@ export class PortfolioController {
         buyPrice: livePrice,
       });
 
-      // 3. Insert BUY transaction
+      // 4. Insert BUY transaction with remaining_balance
       await insertTransaction({
         userId,
         symbol,
@@ -221,10 +228,10 @@ export class PortfolioController {
         quantity,
         price: livePrice,
         totalAmount: totalCost,
+        remainingBalance: newCash,
       });
 
-      // 4. Update wallet
-      const newCash = Math.round((wallet.available_cash - totalCost) * 100) / 100;
+      // 5. Update wallet
       await updateWallet(userId, newCash, 0, 0); // portfolio_value recalculated on fetch
 
       return res.json({
@@ -245,7 +252,7 @@ export class PortfolioController {
   }
 
   /**
-   * POST /api/sell
+   * POST /portfolio/sell
    * Body: { symbol, quantity, livePrice }
    * Uses FIFO — reduces oldest purchases first
    */
@@ -291,8 +298,12 @@ export class PortfolioController {
         }
       }
 
-      // 3. Insert SELL transaction
+      // 3. Get wallet and compute new cash BEFORE inserting transaction
+      const wallet = await getOrCreateWallet(userId);
       const revenue = Math.round(quantity * livePrice * 100) / 100;
+      const newCash = Math.round((wallet.available_cash + revenue) * 100) / 100;
+
+      // 4. Insert SELL transaction with remaining_balance
       await insertTransaction({
         userId,
         symbol,
@@ -302,11 +313,10 @@ export class PortfolioController {
         quantity,
         price: livePrice,
         totalAmount: revenue,
+        remainingBalance: newCash,
       });
 
-      // 4. Update wallet
-      const wallet = await getOrCreateWallet(userId);
-      const newCash = Math.round((wallet.available_cash + revenue) * 100) / 100;
+      // 5. Update wallet
       await updateWallet(userId, newCash, 0, 0);
 
       return res.json({

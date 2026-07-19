@@ -37,7 +37,9 @@ export class ProfileController {
           riskTolerance: data.risk_tolerance,
           preferredMarkets: data.preferred_markets || [],
           investmentHorizon: data.investment_horizon,
-          avatarUrl: data.avatar_url
+          avatarUrl: data.avatar_url,
+          // Alias preferred_markets as preferredSectors for the profile UI
+          preferredSectors: data.preferred_markets || [],
         }
       });
     } catch (error: any) {
@@ -72,6 +74,10 @@ export class ProfileController {
       if (fields.riskTolerance !== undefined) updates.risk_tolerance = fields.riskTolerance;
       if (fields.preferredMarkets !== undefined) updates.preferred_markets = fields.preferredMarkets;
       if (fields.investmentHorizon !== undefined) updates.investment_horizon = fields.investmentHorizon;
+      // New profile fields
+      if (fields.experienceLevel !== undefined) updates.experience_level = fields.experienceLevel;
+      if (fields.investmentGoal !== undefined) updates.investment_goal = fields.investmentGoal;
+      if (fields.preferredSectors !== undefined) updates.preferred_markets = fields.preferredSectors;
       
       updates.updated_at = new Date().toISOString();
 
@@ -106,7 +112,8 @@ export class ProfileController {
           riskTolerance: data.risk_tolerance,
           preferredMarkets: data.preferred_markets || [],
           investmentHorizon: data.investment_horizon,
-          avatarUrl: data.avatar_url
+          avatarUrl: data.avatar_url,
+          preferredSectors: data.preferred_markets || [],
         }
       });
     } catch (error: any) {
@@ -115,4 +122,3 @@ export class ProfileController {
     }
   }
 }
-

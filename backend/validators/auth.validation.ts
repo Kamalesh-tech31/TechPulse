@@ -44,7 +44,7 @@ export const resetPasswordSchema = z.object({
 });
 
 export const profileUpdateSchema = z.object({
-  fullName: z.string().min(2).optional(),
+  fullName: z.string().min(2, 'Name must be at least 2 characters').optional(),
   username: z.string().min(3).optional(),
   phone: z.string().optional(),
   country: z.string().optional(),
@@ -55,5 +55,9 @@ export const profileUpdateSchema = z.object({
   annualIncome: z.string().optional(),
   riskTolerance: z.string().optional(),
   preferredMarkets: z.array(z.string()).optional(),
-  investmentHorizon: z.string().optional()
+  investmentHorizon: z.string().optional(),
+  // New editable profile fields
+  experienceLevel: z.enum(['Beginner', 'Intermediate', 'Advanced']).optional(),
+  investmentGoal: z.enum(['Learning', 'Stock Analysis', 'Virtual Trading', 'Portfolio Improvement']).optional(),
+  preferredSectors: z.array(z.string()).optional(),
 });

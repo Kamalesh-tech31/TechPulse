@@ -9,7 +9,7 @@ interface AnimatedCardProps {
   onClick?: () => void;
   /** Set to false to disable the hover-lift effect (e.g. for non-interactive cards) */
   hoverLift?: boolean;
-  as?: keyof JSX.IntrinsicElements;
+  as?: React.ElementType;
 }
 
 /**

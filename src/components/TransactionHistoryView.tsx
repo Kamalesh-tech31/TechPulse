@@ -6,8 +6,10 @@ import {
   ArrowDownRight, 
   Search,
   ArrowRight,
-  Database
+  Database,
+  Sparkles
 } from 'lucide-react';
+import { formatCurrency } from '../utils/formatCurrency';
 
 export const TransactionHistoryView: React.FC = () => {
   const { transactions } = useApp();
@@ -65,10 +67,11 @@ export const TransactionHistoryView: React.FC = () => {
                 <tbody className="divide-y divide-white/[0.03] text-xs font-mono">
                   {filteredTransactions.map((t) => {
                     const isBuy = t.type === 'BUY';
+                    const isCredit = t.type === 'CREDIT';
                     return (
                       <tr key={t.id} className="hover:bg-white/[0.01] transition">
                         <td className="py-4 px-5 text-gray-600">
-                          #{t.id}
+                          #{t.id.slice(0, 8)}
                         </td>
                         <td className="py-4 px-5">
                           <span className="font-sans font-bold text-white text-sm block">{t.symbol}</span>
@@ -76,22 +79,28 @@ export const TransactionHistoryView: React.FC = () => {
                         </td>
                         <td className="py-4 px-5">
                           <span className={`inline-flex items-center gap-0.5 px-2 py-0.5 rounded text-[10px] font-bold ${
-                            isBuy ? 'text-emerald-400 bg-emerald-950/25 border border-emerald-500/10' : 'text-rose-400 bg-rose-950/25 border border-trado-danger/10'
+                            isBuy ? 'text-emerald-400 bg-emerald-950/25 border border-emerald-500/10'
+                            : isCredit ? 'text-violet-400 bg-violet-950/25 border border-violet-500/10'
+                            : 'text-rose-400 bg-rose-950/25 border border-trado-danger/10'
                           }`}>
-                            {isBuy ? 'BUY' : 'SELL'}
+                            {t.type}
                           </span>
                         </td>
                         <td className="py-4 px-5 text-right text-white font-bold text-sm">
-                          {t.quantity}
+                          {isCredit ? '—' : t.quantity}
                         </td>
                         <td className="py-4 px-5 text-right text-gray-300">
-                          ₹{t.price.toFixed(2)}
+                          {isCredit ? '—' : `₹${t.price.toFixed(2)}`}
                         </td>
-                        <td className={`py-4 px-5 text-right font-bold text-sm ${isBuy ? 'text-emerald-400' : 'text-rose-400'}`}>
-                          ₹{t.totalAmount.toLocaleString(undefined, { maximumFractionDigits: 1 })}
+                        <td className={`py-4 px-5 text-right font-bold text-sm ${
+                           t.type === 'BUY' ? 'text-emerald-400' 
+                           : t.type === 'SELL' ? 'text-rose-400'
+                           : 'text-violet-400'
+                         }`}>
+                          {formatCurrency(t.totalAmount)}
                         </td>
                         <td className="py-4 px-5 text-right text-gray-400">
-                          ₹{t.remainingBalance.toLocaleString(undefined, { maximumFractionDigits: 1 })}
+                          {formatCurrency(t.remainingBalance)}
                         </td>
                         <td className="py-4 px-5 text-center text-gray-500">
                           {new Date(t.timestamp).toLocaleDateString()} • {new Date(t.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
@@ -105,40 +114,45 @@ export const TransactionHistoryView: React.FC = () => {
 
             {/* Mobile Stacked Card View */}
             <div className="block md:hidden divide-y divide-white/[0.03] text-xs font-mono">
-              {filteredTransactions.map((t) => {
-                const isBuy = t.type === 'BUY';
-                return (
-                  <div key={t.id} className="p-4 space-y-2">
-                    <div className="flex justify-between items-center">
-                      <span className="text-gray-600 font-mono">Receipt ID: #{t.id}</span>
-                      <span className={`inline-flex items-center gap-0.5 px-2 py-0.5 rounded text-[10px] font-bold ${
-                        isBuy ? 'text-emerald-400 bg-emerald-950/25 border border-emerald-500/10' : 'text-rose-400 bg-rose-950/25 border border-trado-danger/10'
-                      }`}>
-                        {isBuy ? 'BUY' : 'SELL'}
-                      </span>
-                    </div>
-                    <div className="flex justify-between items-start pt-1">
-                      <div>
-                        <span className="font-sans font-bold text-white text-base block">{t.symbol}</span>
-                        <span className="text-[11px] text-gray-500 font-sans block mt-0.5">{t.name}</span>
+                {filteredTransactions.map((t) => {
+                  const isBuy = t.type === 'BUY';
+                  const isCredit = t.type === 'CREDIT';
+                  return (
+                    <div key={t.id} className="p-4 space-y-2">
+                      <div className="flex justify-between items-center">
+                        <span className="text-gray-600 font-mono">Receipt: #{t.id.slice(0, 8)}</span>
+                        <span className={`inline-flex items-center gap-0.5 px-2 py-0.5 rounded text-[10px] font-bold ${
+                          isBuy ? 'text-emerald-400 bg-emerald-950/25 border border-emerald-500/10'
+                          : isCredit ? 'text-violet-400 bg-violet-950/25 border border-violet-500/10'
+                          : 'text-rose-400 bg-rose-950/25 border border-trado-danger/10'
+                        }`}>
+                          {t.type}
+                        </span>
                       </div>
-                      <div className="text-right">
-                        <span className="text-sm font-bold text-white block">Qty: {t.quantity}</span>
-                        <span className="text-[11px] text-gray-500 block mt-0.5">Price: ₹{t.price.toFixed(2)}</span>
+                      <div className="flex justify-between items-start pt-1">
+                        <div>
+                          <span className="font-sans font-bold text-white text-base block">{t.symbol}</span>
+                          <span className="text-[11px] text-gray-500 font-sans block mt-0.5">{t.name}</span>
+                        </div>
+                        <div className="text-right">
+                          <span className="text-sm font-bold text-white block">{isCredit ? '—' : `Qty: ${t.quantity}`}</span>
+                          <span className="text-[11px] text-gray-500 block mt-0.5">{isCredit ? 'Credit Claim' : `Price: ₹${t.price.toFixed(2)}`}</span>
+                        </div>
                       </div>
-                    </div>
-                    <div className="flex justify-between pt-2 border-t border-white/[0.02]">
-                      <span className="text-gray-500">Net Value:</span>
-                      <span className={`font-bold text-sm ${isBuy ? 'text-emerald-400' : 'text-rose-400'}`}>
-                        ₹{t.totalAmount.toLocaleString(undefined, { maximumFractionDigits: 1 })}
-                      </span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-gray-500">Wallet Balance:</span>
-                      <span className="text-gray-300">
-                        ₹{t.remainingBalance.toLocaleString(undefined, { maximumFractionDigits: 1 })}
-                      </span>
-                    </div>
+                      <div className="flex justify-between pt-2 border-t border-white/[0.02]">
+                        <span className="text-gray-500">Net Value:</span>
+                        <span className={`font-bold text-sm ${
+                          isBuy ? 'text-emerald-400' : isCredit ? 'text-violet-400' : 'text-rose-400'
+                        }`}>
+                          {formatCurrency(t.totalAmount)}
+                        </span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-500">Wallet Balance:</span>
+                        <span className="text-gray-300">
+                          {formatCurrency(t.remainingBalance)}
+                        </span>
+                      </div>
                     <div className="text-[10px] text-gray-500 text-right mt-2 pt-1 border-t border-white/[0.01]">
                       {new Date(t.timestamp).toLocaleDateString()} • {new Date(t.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                     </div>

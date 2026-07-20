@@ -4,7 +4,7 @@ const yahooFinance = new YahooFinance();
 
 export async function getStock(symbol: string) {
   try {
-    const quote = await yahooFinance.quote(symbol);
+    const quote: any = await yahooFinance.quote(symbol);
 
     console.log("================================");
     console.log("Symbol:", quote.symbol);
@@ -29,7 +29,7 @@ export async function getStock(symbol: string) {
       time: quote.regularMarketTime,
     };
   } catch (err) {
-    console.error(err);
+    console.error(`Failed to fetch ${symbol}:`, err);
     throw err;
   }
 }
@@ -40,13 +40,15 @@ export async function getMultipleStocks(symbols: string[]) {
       try {
         return await getStock(symbol);
       } catch (err) {
-        console.error(`Failed to fetch ${symbol}`);
+        console.error(`Failed to fetch ${symbol}:`, err);
         return null;
       }
     })
   );
 
-  return stocks.filter(Boolean);
+  return stocks.filter(
+    (stock): stock is NonNullable<typeof stock> => stock !== null
+  );
 }
 
 export async function getStockHistory(symbol: string) {
@@ -55,17 +57,15 @@ export async function getStockHistory(symbol: string) {
     const fourteenDaysAgo = new Date();
     fourteenDaysAgo.setDate(today.getDate() - 14);
 
-    const result = await yahooFinance.chart(symbol, {
+    const result: any = await yahooFinance.chart(symbol, {
       period1: fourteenDaysAgo,
       period2: today,
       interval: "1d",
     });
 
     const quotes = result.quotes || [];
-    // slice the last 7 trading days
-    const last7Quotes = quotes.slice(-7);
 
-    return last7Quotes.map((q: any) => ({
+    return quotes.slice(-7).map((q: any) => ({
       date: q.date,
       open: q.open,
       high: q.high,

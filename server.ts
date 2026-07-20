@@ -8,7 +8,7 @@ import { getStock, getMultipleStocks, getStockHistory } from "./server/services/
 import backendApp from './backend/app';
 
 const app = express();
-const PORT = 3000;
+const PORT = Number(process.env.PORT) || 3000;
 
 app.use(express.json());
 app.use(backendApp);

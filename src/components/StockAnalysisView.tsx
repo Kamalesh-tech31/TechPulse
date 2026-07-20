@@ -622,16 +622,36 @@ export const StockAnalysisView: React.FC = () => {
                 <div className="grid grid-cols-2 gap-3 pt-2">
                   <button
                     disabled={isTrading}
-                    onClick={() => handleBuy(selectedStock.id)}
-                    className="bg-emerald-500 hover:bg-emerald-600 active:scale-[0.98] text-white font-semibold py-3 rounded-xl transition shadow-[0_0_15px_rgba(16,185,129,0.2)] text-sm flex items-center justify-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed"
+                    onClick={() => {
+                      if (marketState !== 'REGULAR') {
+                        setTradeMessage({ type: 'error', text: 'Market is closed. Trading is available only during market hours.' });
+                        return;
+                      }
+                      handleBuy(selectedStock.id);
+                    }}
+                    className={`bg-emerald-500 text-white font-semibold py-3 rounded-xl transition shadow-[0_0_15px_rgba(16,185,129,0.2)] text-sm flex items-center justify-center gap-1 ${
+                      marketState !== 'REGULAR'
+                        ? 'opacity-40 cursor-not-allowed'
+                        : 'hover:bg-emerald-600 active:scale-[0.98] cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed'
+                    }`}
                   >
                     <ArrowUpRight className="h-4 w-4" />
                     {isTrading ? 'Trading...' : 'Buy shares'}
                   </button>
                   <button
                     disabled={isTrading}
-                    onClick={() => handleSell(selectedStock.id)}
-                    className="bg-trado-danger hover:bg-red-600 active:scale-[0.98] text-white font-semibold py-3 rounded-xl transition shadow-[0_0_15px_rgba(239,68,68,0.2)] text-sm flex items-center justify-center gap-1 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                    onClick={() => {
+                      if (marketState !== 'REGULAR') {
+                        setTradeMessage({ type: 'error', text: 'Market is closed. Trading is available only during market hours.' });
+                        return;
+                      }
+                      handleSell(selectedStock.id);
+                    }}
+                    className={`bg-trado-danger text-white font-semibold py-3 rounded-xl transition shadow-[0_0_15px_rgba(239,68,68,0.2)] text-sm flex items-center justify-center gap-1 ${
+                      marketState !== 'REGULAR'
+                        ? 'opacity-40 cursor-not-allowed'
+                        : 'hover:bg-red-600 active:scale-[0.98] cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed'
+                    }`}
                   >
                     <ArrowDownRight className="h-4 w-4" />
                     {isTrading ? 'Trading...' : 'Sell shares'}

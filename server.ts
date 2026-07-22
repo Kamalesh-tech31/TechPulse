@@ -14,6 +14,17 @@ app.use(express.json());
 app.use(backendApp);
 
 
+const chartCache = new Map<
+  string,
+  {
+    data: any;
+    timestamp: number;
+  }
+>();
+
+const CACHE_DURATION = 15 * 60 * 1000;
+
+
 app._router.stack.forEach((r: any) => {
   if (r.route) {
     console.log(Object.keys(r.route.methods), r.route.path);
@@ -724,12 +735,36 @@ app.get("/api/nifty25", async (req, res) => {
 app.get("/api/stocks/:symbol/history", async (req, res) => {
   try {
     const symbol = req.params.symbol;
+
+    // Check if cached data exists
+    const cached = chartCache.get(symbol);
+
+    if (
+      cached &&
+      Date.now() - cached.timestamp < CACHE_DURATION
+    ) {
+      console.log(`Using cached history for ${symbol}`);
+      return res.json(cached.data);
+    }
+
+    console.log(`Fetching history from Yahoo for ${symbol}`);
+
     const history = await getStockHistory(symbol);
     const quote = await getStock(symbol);
-    res.json({
+
+    const response = {
       quotes: history,
-      marketState: quote?.marketState || "CLOSED"
+      marketState: quote?.marketState || "CLOSED",
+    };
+
+    // Save in cache
+    chartCache.set(symbol, {
+      data: response,
+      timestamp: Date.now(),
     });
+
+    res.json(response);
+
   } catch (err: any) {
     console.error(`Failed to fetch history for ${req.params.symbol}:`, err);
     res.status(500).json({

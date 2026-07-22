@@ -369,7 +369,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
 
     loadStocks();
-    const interval = setInterval(loadStocks, 30000);
+    const interval = setInterval(loadStocks, 2*60*1000);
     return () => clearInterval(interval);
   }, []);
 

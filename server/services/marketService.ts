@@ -2,53 +2,80 @@ import YahooFinance from "yahoo-finance2";
 
 const yahooFinance = new YahooFinance();
 
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 export async function getStock(symbol: string) {
-  try {
-    const quote: any = await yahooFinance.quote(symbol);
+  const MAX_RETRIES = 3;
 
-    console.log("================================");
-    console.log("Symbol:", quote.symbol);
-    console.log("Price:", quote.regularMarketPrice);
-    console.log("Previous:", quote.regularMarketPreviousClose);
-    console.log("Time:", new Date(quote.regularMarketTime * 1000));
-    console.log("State:", quote.marketState);
-    console.log("================================");
+  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      const quote: any = await yahooFinance.quote(symbol);
 
-    return {
-      symbol: quote.symbol,
-      name: quote.shortName,
-      price: quote.regularMarketPrice,
-      previousClose: quote.regularMarketPreviousClose,
-      open: quote.regularMarketOpen,
-      high: quote.regularMarketDayHigh,
-      low: quote.regularMarketDayLow,
-      volume: quote.regularMarketVolume,
-      currency: quote.currency,
-      exchange: quote.fullExchangeName,
-      marketState: quote.marketState,
-      time: quote.regularMarketTime,
-    };
-  } catch (err) {
-    console.error(`Failed to fetch ${symbol}:`, err);
-    throw err;
+      console.log("================================");
+      console.log("Symbol:", quote.symbol);
+      console.log("Price:", quote.regularMarketPrice);
+      console.log("Previous:", quote.regularMarketPreviousClose);
+      console.log("Time:", new Date(quote.regularMarketTime * 1000));
+      console.log("State:", quote.marketState);
+      console.log("================================");
+
+      return {
+        symbol: quote.symbol,
+        name: quote.shortName,
+        price: quote.regularMarketPrice,
+        previousClose: quote.regularMarketPreviousClose,
+        open: quote.regularMarketOpen,
+        high: quote.regularMarketDayHigh,
+        low: quote.regularMarketDayLow,
+        volume: quote.regularMarketVolume,
+        currency: quote.currency,
+        exchange: quote.fullExchangeName,
+        marketState: quote.marketState,
+        time: quote.regularMarketTime,
+      };
+    } catch (err: any) {
+      const is429 =
+        err?.message?.includes("429") ||
+        err?.message?.includes("Too Many Requests");
+
+      if (is429 && attempt < MAX_RETRIES) {
+        console.log(
+          `429 for ${symbol}. Retry ${attempt}/${MAX_RETRIES} in ${
+            attempt * 3
+          } seconds...`
+        );
+
+        await sleep(attempt * 3000);
+        continue;
+      }
+
+      console.error(`Failed to fetch ${symbol}:`, err);
+      throw err;
+    }
   }
+
+  throw new Error(`Unable to fetch ${symbol}`);
 }
 
 export async function getMultipleStocks(symbols: string[]) {
-  const stocks = await Promise.all(
-    symbols.map(async (symbol) => {
-      try {
-        return await getStock(symbol);
-      } catch (err) {
-        console.error(`Failed to fetch ${symbol}:`, err);
-        return null;
-      }
-    })
-  );
+  const stocks = [];
 
-  return stocks.filter(
-    (stock): stock is NonNullable<typeof stock> => stock !== null
-  );
+  for (const symbol of symbols) {
+    try {
+      const stock = await getStock(symbol);
+
+      stocks.push(stock);
+
+      // Wait 300ms before requesting the next stock
+      await sleep(300);
+    } catch (err) {
+      console.error(`Failed to fetch ${symbol}:`, err);
+    }
+  }
+
+  return stocks;
 }
 
 export async function getStockHistory(symbol: string) {
